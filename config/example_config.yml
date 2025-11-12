@@ -1,0 +1,16 @@
+paths:
+  chrome_driver: /bin/echo
+  stock_list: /dev/null
+  download_dir: /tmp
+  check_dir: /tmp
+
+mailing:
+  sender_email: example@gmail.com
+  sender_password: your_email_password
+  mailing_list:
+    - test@example.com
+
+download:
+  year: 2023
+  mode: TW
+  month_period: 3
