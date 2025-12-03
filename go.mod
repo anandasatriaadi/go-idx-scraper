@@ -5,16 +5,14 @@ go 1.24
 toolchain go1.24.8
 
 require (
+	github.com/chromedp/cdproto v0.0.0-20250803210736-d308e07a266d
+	github.com/chromedp/chromedp v0.14.2
 	github.com/spf13/viper v1.21.0
-	github.com/tebeka/selenium v0.9.9
 	github.com/xuri/excelize/v2 v2.8.1
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
 )
 
 require (
-	github.com/blang/semver v3.5.1+incompatible // indirect
-	github.com/chromedp/cdproto v0.0.0-20250803210736-d308e07a266d // indirect
-	github.com/chromedp/chromedp v0.14.2 // indirect
 	github.com/chromedp/sysutil v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-json-experiment/json v0.0.0-20250725192818-e39067aee2d2 // indirect

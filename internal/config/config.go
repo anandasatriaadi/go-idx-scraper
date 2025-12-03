@@ -11,10 +11,10 @@ import (
 
 // PathConfig holds path-related configuration settings.
 type PathConfig struct {
-	ChromeDriver string `mapstructure:"chrome_driver"`
-	StockList    string `mapstructure:"stock_list"`
-	Download     string `mapstructure:"download_dir"`
-	Check        string `mapstructure:"check_dir"`
+	StockList      string `mapstructure:"stock_list"`
+	Download       string `mapstructure:"download_dir"`
+	Check          string `mapstructure:"check_dir"`
+	BrowserProfile string `mapstructure:"browser_profile"`
 }
 
 // MailConfig holds mailing-related configuration settings.
@@ -71,11 +71,13 @@ func Load(configPath string) (*Config, error) {
 // email addresses are valid, and mode is one of the allowed values.
 // Returns an error if validation fails.
 func (c *Config) Validate() error {
-	if c.Paths.ChromeDriver == "" || !fileExists(c.Paths.ChromeDriver) {
-		return fmt.Errorf("invalid chrome_driver_path")
+	if c.Paths.StockList == "" {
+		return fmt.Errorf("stock_list_path required")
 	}
-	if c.Paths.StockList == "" || !fileExists(c.Paths.StockList) {
-		return fmt.Errorf("invalid stock_list_path")
+	if !fileExists(c.Paths.StockList) {
+		if err := os.WriteFile(c.Paths.StockList, []byte{}, 0644); err != nil {
+			return fmt.Errorf("failed to create stock_list: %w", err)
+		}
 	}
 	if len(c.Mailing.List) == 0 {
 		return fmt.Errorf("mailing_list required")

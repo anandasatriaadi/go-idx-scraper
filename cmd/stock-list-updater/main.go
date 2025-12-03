@@ -1,12 +1,19 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"log"
+	"log/slog"
 	"os"
+	"time"
 
 	"github.com/anandasatriaadi/go-idx-scraper/internal/browser"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/stock"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/types"
+	"github.com/chromedp/chromedp"
 )
 
 // stringSliceToSet converts a slice of strings into a set-like map.
@@ -36,16 +43,14 @@ func main() {
 		log.Fatalf("Failed to read config: %v\n", err)
 	}
 
-	// Create a new browser session
-	service, browser := browser.SetupBrowser(*cfg)
-	defer service.Stop()
-	defer browser.Quit()
+	ctx, cancel := browser.SetupChromeDp(cfg)
+	defer cancel()
 
 	// Load current list of stocks and make it into a set (in this case a map)
 	currStocksList := stock.LoadCurrent(cfg.Paths.StockList)
 	currStocksSet := stringSliceToSet(currStocksList)
 
-	jsonData := stock.FetchNewStocks(browser)
+	jsonData := fetchStocks(&ctx)
 	for _, stock := range jsonData {
 		if !currStocksSet[stock.Code] {
 			currStocksList = append(currStocksList, stock.Code)
@@ -54,5 +59,34 @@ func main() {
 	}
 
 	// Save stocks list appended with new stocks
-	stock.SaveUpdatedStocks(cfg.Paths.StockList, currStocksList)
+	saveStock(cfg.Paths.StockList, currStocksList)
+}
+
+func fetchStocks(ctx *context.Context) []types.StockData {
+	url := fmt.Sprintf("https://www.idx.co.id/primary/TradingSummary/GetStockSummary?length=9999&start=0&date=%s", time.Now().AddDate(0, 0, -1).Format("20060102"))
+
+	fmt.Println("Url", url)
+	var data string
+	err := chromedp.Run(*ctx, getPageData(url, &data))
+	fmt.Println("resp", data)
+	if err != nil {
+		slog.Error("Running chromedp", "error", err)
+		return nil
+	}
+	var resp types.StockListResponse
+	json.Unmarshal([]byte(data), &resp)
+	return resp.Data
+}
+
+// saveStock saves stocks.
+func saveStock(filePath string, stocks []string) {
+	data, _ := json.MarshalIndent(stocks, "", "  ")
+	os.WriteFile(filePath, data, 0644)
+}
+
+func getPageData(urlstr string, res *string) chromedp.Tasks {
+	return chromedp.Tasks{
+		chromedp.Navigate(urlstr),
+		chromedp.Evaluate(`document.body.innerText`, res),
+	}
 }

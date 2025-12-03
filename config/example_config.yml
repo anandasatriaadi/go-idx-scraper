@@ -1,5 +1,4 @@
 paths:
-  chrome_driver: /bin/echo
   stock_list: /dev/null
   download_dir: /tmp
   check_dir: /tmp

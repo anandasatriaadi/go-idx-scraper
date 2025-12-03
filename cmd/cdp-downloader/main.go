@@ -1,101 +1,142 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	br "github.com/anandasatriaadi/go-idx-scraper/internal/browser"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/stock"
 	"github.com/chromedp/cdproto/browser"
 	"github.com/chromedp/chromedp"
 )
 
 func main() {
-	// Mock config (replace with your actual config loading)
-	cfg := config.Config{
-		Paths: config.PathConfig{
-			Download: "D:\\sync-gitrepo\\go-idx-scraper\\downloads", // Set your download directory
-		},
+	if len(os.Args) < 2 {
+		log.Fatalf("no config file provided. Usage: %s <config_file>", os.Args[0])
 	}
+	configPath := os.Args[1]
+	cfg := loadConfig(configPath)
 
-	url := "https://www.idx.co.id/Portals/0/StaticData/ListedCompanies/Corporate_Actions/New_Info_JSX/Jenis_Informasi/01_Laporan_Keuangan/02_Soft_Copy_Laporan_Keuangan//Laporan%20Keuangan%20Tahun%202024/Audit/ASII/FinancialStatement-2024-Tahunan-ASII.xlsx"
-	filename := "FinancialStatement-2024-Tahunan-ASII.xlsx" // Expected filename; adjust if dynamic
-	filepath := filepath.Join(cfg.Paths.Download, filename)
+	// Setup chromedp context
+	ctx, cancel := br.SetupChromeDp(cfg)
+	defer cancel()
 
-	// Setup browser (inlined from SetupBrowser function)
-	// Define browser options (equivalent to your Chrome capabilities)
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		// chromedp.Flag("headless", true), // Uncomment for headless mode
-		chromedp.Flag("no-sandbox", true),
-		chromedp.Flag("disable-dev-shm-usage", true),
-		chromedp.Flag("disable-gpu", true),
-		chromedp.Flag("remote-debugging-port", "9222"),
-		chromedp.Flag("disable-extensions", true),
-		chromedp.UserDataDir("D:\\browser-profile"),
-		chromedp.Flag("log-level", "1"),
-		chromedp.Flag("safebrowsing-disable-download-protection", true),
-		chromedp.Flag("safebrowsing-disable-extension-blacklist", true),
-		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"),
-		chromedp.Flag("credentials_enable_service", false),
-		chromedp.Flag("profile.password_manager_enabled", false),
-	)
+	// Load stocks list and prep
+	stockList := stock.LoadCurrent(cfg.Paths.StockList)
+	period, modePeriod := prepParams(cfg)
 
-	// Create allocator context (manages browser process)
-	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	for _, sName := range stockList {
+		fmt.Printf("Processing stock: %s\n", sName)
 
-	// Create task context (for running actions)
-	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithDebugf(log.Printf))
+		var fn string
+		if cfg.Download.Mode == "AUDIT" {
+			fn = fmt.Sprintf("FinancialStatement-%s-Tahunan-%s.xlsx", cfg.Download.Year, sName)
+		} else {
+			fn = fmt.Sprintf("FinancialStatement-%s-%s-%s.xlsx", cfg.Download.Year, period, sName)
+		}
 
-	// Combined cancel function to clean up both contexts
-	combinedCancel := func() {
-		cancel()
-		allocCancel()
-	}
-	defer combinedCancel()
+		if cfg.Download.Mode == "AUDIT" {
+			modePeriod = "Audit"
+		}
 
-	// Create a temporary HTML page with a download link (data URL to avoid external files)
-	html := fmt.Sprintf(`
+		url := fmt.Sprintf("https://www.idx.co.id/Portals/0/StaticData/ListedCompanies/Corporate_Actions/New_Info_JSX/Jenis_Informasi/01_Laporan_Keuangan/02_Soft_Copy_Laporan_Keuangan//Laporan%%20Keuangan%%20Tahun%%20%s/%s/%s/%s", cfg.Download.Year, modePeriod, sName, fn)
+		fp := filepath.Join(cfg.Paths.Download, fn)
+
+		// Create a temporary HTML page with a download link (data URL to avoid external files)
+		html := fmt.Sprintf(`
 			<html>
 			<body>
 				<a id="download-link" href="%s" download="%s">Download File</a>
 			</body>
 			</html>
-		`, url, filename)
-	dataURL := "data:text/html;charset=utf-8," + strings.ReplaceAll(html, " ", "%20") // Encode spaces
+		`, url, fn)
+		dataURL := "data:text/html;charset=utf-8," + strings.ReplaceAll(html, " ", "%20")
 
-	// Navigate to the temporary page and click the download link
-	err := chromedp.Run(ctx,
-		browser.SetDownloadBehavior(browser.SetDownloadBehaviorBehaviorAllow).
-			WithDownloadPath(cfg.Paths.Download),
-		chromedp.Navigate(dataURL),
-		chromedp.Click("#download-link", chromedp.ByID),
-	)
-	if err != nil {
-		log.Fatalf("Error triggering download: %v", err)
-	}
+		var title string
+		// Navigate to the temporary page and click the download link
+		err := chromedp.Run(ctx,
+			browser.SetDownloadBehavior(browser.SetDownloadBehaviorBehaviorAllow).
+				WithDownloadPath(cfg.Paths.Download),
+			chromedp.Navigate(dataURL),
+			chromedp.Click("#download-link", chromedp.ByID),
+			chromedp.Title(&title),
+		)
+		if err != nil {
+			log.Fatalf("Error triggering download: %v", err)
+		}
+		fmt.Printf("Browser Title: %s\n", title)
 
-	// Wait for the download to complete (poll the directory for the file)
-	timeout := time.After(30 * time.Second) // Adjust timeout as needed
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
+		// Wait for the download to complete
+		timeout := time.After(30 * time.Second)
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
 
-	for {
-		select {
-		case <-timeout:
-			log.Fatalf("Download timed out: file not found at %s", filepath)
-		case <-ticker.C:
-			if _, err := os.Stat(filepath); err == nil {
-				// File exists, download complete
-				fmt.Printf("Downloaded file to: %s\n", filepath)
-				goto done
+		for {
+			select {
+			case <-timeout:
+				fmt.Printf("Download timed out: file not found at %s", fp)
+			case <-ticker.C:
+				err := checkTitle(title, sName)
+				if err != nil {
+					goto done
+				}
+
+				if _, err := os.Stat(fp); err == nil {
+					goto done
+				}
 			}
+		}
+
+	done:
+	}
+}
+
+func loadConfig(configPath string) *config.Config {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		log.Fatalf("Failed to read config: %v", err)
+	}
+	return cfg
+}
+
+func prepParams(cfg *config.Config) (period string, modePeriod string) {
+	monthPeriod, err := strconv.Atoi(cfg.Download.MonthPeriod)
+	if err != nil {
+		monthPeriod = 0
+	}
+	period = strings.Repeat("I", monthPeriod)
+	modePeriod = fmt.Sprintf("%s%d", cfg.Download.Mode, monthPeriod)
+	return period, modePeriod
+}
+
+func checkTitle(title string, sName string) error {
+	titleLower := strings.ToLower(title)
+	errorTitles := []string{"404", "document", "503", "attention required", "just a moment"}
+
+	for _, errorStr := range errorTitles {
+		if strings.Contains(titleLower, errorStr) {
+			switch errorStr {
+			case "404", "document":
+				fmt.Println("NOT FOUND :::", sName, "-", titleLower)
+				return fmt.Errorf("not found")
+			case "503":
+				fmt.Println("SERVER ERROR :::", sName, "-", titleLower)
+				return fmt.Errorf("server error")
+			case "attention required":
+			case "just a moment":
+				fmt.Println("BOT DETECTOR :::", sName, "-", titleLower, "\x1b[0m")
+				return fmt.Errorf("bot detector")
+			}
+			return nil
 		}
 	}
 
-done:
-	fmt.Println("Browser test completed. Downloads will be in:", cfg.Paths.Download)
+	fmt.Println("DOWNLOAD :::", sName, "-", titleLower, "\x1b[0m")
+	return nil
 }
