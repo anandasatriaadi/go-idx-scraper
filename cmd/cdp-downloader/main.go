@@ -11,7 +11,7 @@ import (
 
 	br "github.com/anandasatriaadi/go-idx-scraper/internal/browser"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
-	"github.com/anandasatriaadi/go-idx-scraper/internal/stock"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
 	"github.com/chromedp/cdproto/browser"
 	"github.com/chromedp/chromedp"
 )
@@ -28,7 +28,7 @@ func main() {
 	defer cancel()
 
 	// Load stocks list and prep
-	stockList := stock.LoadCurrent(cfg.Paths.StockList)
+	stockList := helper.LoadCurrent(cfg.Paths.StockList)
 	period, modePeriod := prepParams(cfg)
 
 	for _, sName := range stockList {
@@ -46,7 +46,7 @@ func main() {
 		}
 
 		url := fmt.Sprintf("https://www.idx.co.id/Portals/0/StaticData/ListedCompanies/Corporate_Actions/New_Info_JSX/Jenis_Informasi/01_Laporan_Keuangan/02_Soft_Copy_Laporan_Keuangan//Laporan%%20Keuangan%%20Tahun%%20%s/%s/%s/%s", cfg.Download.Year, modePeriod, sName, fn)
-		fp := filepath.Join(cfg.Paths.Download, fn)
+		fp := filepath.Join(cfg.Paths.DownloadDir, fn)
 
 		// Create a temporary HTML page with a download link (data URL to avoid external files)
 		html := fmt.Sprintf(`
@@ -62,7 +62,7 @@ func main() {
 		// Navigate to the temporary page and click the download link
 		err := chromedp.Run(ctx,
 			browser.SetDownloadBehavior(browser.SetDownloadBehaviorBehaviorAllow).
-				WithDownloadPath(cfg.Paths.Download),
+				WithDownloadPath(cfg.Paths.DownloadDir),
 			chromedp.Navigate(dataURL),
 			chromedp.Click("#download-link", chromedp.ByID),
 			chromedp.Title(&title),

@@ -15,7 +15,7 @@ import (
 
 func FindDownloadedStocks(config config.Config) []string {
 	var foundStocks []string
-	files, err := os.ReadDir(config.Paths.Download)
+	files, err := os.ReadDir(config.Paths.DownloadDir)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -69,14 +69,14 @@ func moveFile(src, dst string) error {
 }
 
 func MoveFiles(config config.Config) error {
-	files, err := filepath.Glob(filepath.Join(config.Paths.Download, "*.xlsx"))
+	files, err := filepath.Glob(filepath.Join(config.Paths.DownloadDir, "*.xlsx"))
 	if err != nil {
 		return fmt.Errorf("Error getting files: %v", err)
 	}
 
 	for _, file := range files {
 		fileName := filepath.Base(file)
-		destPath := filepath.Join(config.Paths.Check, fileName)
+		destPath := filepath.Join(config.Paths.CheckDir, fileName)
 		err := moveFile(file, destPath)
 		if err != nil {
 			log.Printf("Error moving file %s: %v", file, err)
@@ -147,7 +147,7 @@ func GenerateMailContent(foundStocks []string, romanPeriod string, config config
 func SendMail(content string, romanPeriod string, config config.Config) error {
 	m := gomail.NewMessage()
 	m.SetHeader("From", "Stock Info <stockinfo@annd.dev>")
-	m.SetHeader("To", config.Mailing.List...)
+	m.SetHeader("To", config.Mail.List...)
 	m.SetHeader("Subject", fmt.Sprintf("New %s %s Stock Report 📈 - %02d:%02d:%02d",
 		func() string {
 			if config.Download.Mode == "AUDIT" {
@@ -162,7 +162,7 @@ func SendMail(content string, romanPeriod string, config config.Config) error {
 	))
 	m.SetBody("text/html", content)
 
-	d := gomail.NewDialer("smtp.gmail.com", 587, config.Mailing.SenderEmail, config.Mailing.SenderPassword)
+	d := gomail.NewDialer("smtp.gmail.com", 587, config.Mail.Username, config.Mail.Password)
 
 	// Retry sending the email up to 3 times
 	for i := 0; i < 3; i++ {

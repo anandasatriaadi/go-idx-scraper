@@ -9,7 +9,7 @@ func TestLoad(t *testing.T) {
 	// Create temp config
 	yaml := `
 paths:
-  chrome_driver: /bin/echo
+  browser_profile: /tmp/browser
   stock_list: /dev/null
   download_dir: /tmp
   check_dir: /tmp

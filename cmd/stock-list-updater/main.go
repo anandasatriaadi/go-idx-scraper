@@ -11,7 +11,7 @@ import (
 
 	"github.com/anandasatriaadi/go-idx-scraper/internal/browser"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
-	"github.com/anandasatriaadi/go-idx-scraper/internal/stock"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/types"
 	"github.com/chromedp/chromedp"
 )
@@ -47,7 +47,7 @@ func main() {
 	defer cancel()
 
 	// Load current list of stocks and make it into a set (in this case a map)
-	currStocksList := stock.LoadCurrent(cfg.Paths.StockList)
+	currStocksList := helper.LoadCurrent(cfg.Paths.StockList)
 	currStocksSet := stringSliceToSet(currStocksList)
 
 	jsonData := fetchStocks(&ctx)

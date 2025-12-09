@@ -1,13 +1,17 @@
 paths:
-  stock_list: /dev/null
-  download_dir: /tmp
+  browser_profile: /tmp
   check_dir: /tmp
+  download_dir: /tmp
+  stock_list: /dev/null
 
 mailing:
   sender_email: example@gmail.com
   sender_password: your_email_password
   mailing_list:
     - test@example.com
+
+database:
+  uri: mongodb://localhost:27017
 
 download:
   year: 2023

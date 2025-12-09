@@ -15,7 +15,7 @@ func SetupChromeDp(cfg *config.Config) (ctx context.Context, cancel context.Canc
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("remote-debugging-port", "9222"),
 		chromedp.Flag("disable-extensions", true),
-		chromedp.UserDataDir("D:\\browser-profile"),
+		chromedp.UserDataDir(cfg.Paths.BrowserProfile),
 		chromedp.Flag("log-level", "1"),
 		chromedp.Flag("safebrowsing-disable-download-protection", true),
 		chromedp.Flag("safebrowsing-disable-extension-blacklist", true),
