@@ -1,16 +1,16 @@
-package excel
+package helper
 
 import (
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/xuri/excelize/v2"
+	"go.uber.org/zap"
 )
 
 // ProcessDownloadedFiles processes Excel files.
-func ProcessDownloadedFiles(sourcePath, destPath string) error {
+func ProcessDownloadedFiles(sourcePath, destPath string, logger *zap.Logger) error {
 	// Remove .crdownload files
 	filepath.WalkDir(sourcePath, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -27,15 +27,15 @@ func ProcessDownloadedFiles(sourcePath, destPath string) error {
 		return err
 	}
 	for _, file := range files {
-		processFile(file)
+		processFile(file, logger)
 	}
 	return nil
 }
 
-func processFile(filePath string) {
+func processFile(filePath string, logger *zap.Logger) {
 	f, err := excelize.OpenFile(filePath)
 	if err != nil {
-		slog.Error("Opening file", "file", filePath, "error", err)
+		logger.Error("Opening file", zap.String("file", filePath), zap.Error(err))
 		return
 	}
 	defer f.Close()

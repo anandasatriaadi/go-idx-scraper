@@ -2,7 +2,7 @@ paths:
   browser_profile: /tmp
   check_dir: /tmp
   download_dir: /tmp
-  stock_list: /dev/null
+  issuer_list: /dev/null
 
 mailing:
   sender_email: example@gmail.com

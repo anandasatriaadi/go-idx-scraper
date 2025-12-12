@@ -34,7 +34,7 @@ type cfg struct {
 func DefaultConfig() *cfg {
 	config := config.Get()
 	if config == nil {
-		zap.L().Panic("Config not loaded")
+		panic("Config not loaded")
 	}
 	return &cfg{
 		URI:                    config.Database.URI,
@@ -63,10 +63,9 @@ var once sync.Once
 
 // New creates and connects a new MongoDB instance.
 // Call Close() to disconnect. Use in main or as a dependency.
-func New() (*MongoDB, error) {
+func New(logger *zap.Logger) (*MongoDB, error) {
 	once.Do(func() {
 		cfg := DefaultConfig()
-		logger := zap.L() // Fallback to default logger
 
 		// Build client options from config
 		clientOpts := options.Client().

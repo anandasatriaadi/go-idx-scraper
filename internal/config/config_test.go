@@ -10,7 +10,7 @@ func TestLoad(t *testing.T) {
 	yaml := `
 paths:
   browser_profile: /tmp/browser
-  stock_list: /dev/null
+  issuer_list: /dev/null
   download_dir: /tmp
   check_dir: /tmp
 mailing:
