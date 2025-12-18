@@ -59,9 +59,19 @@ func (r *AnnouncementRepository) UpdateByID(ctx context.Context, id primitive.Ob
 	return r.collection.UpdateOne(ctx, bson.M{"_id": id}, update)
 }
 
+// UpdateOne updates a single document matching the filter using the full update bson map
+func (r *AnnouncementRepository) UpdateOne(ctx context.Context, filter bson.M, update bson.M, opts ...options.Lister[options.UpdateOneOptions]) (*mongo.UpdateResult, error) {
+	return r.collection.UpdateOne(ctx, filter, update, opts...)
+}
+
 // UpdateMany updates multiple documents matching the filter using the full update bson map
-func (r *AnnouncementRepository) UpdateMany(ctx context.Context, filter bson.M, update bson.M) (*mongo.UpdateResult, error) {
-	return r.collection.UpdateMany(ctx, filter, update)
+func (r *AnnouncementRepository) UpdateMany(ctx context.Context, filter bson.M, update bson.M, opts ...options.Lister[options.UpdateManyOptions]) (*mongo.UpdateResult, error) {
+	return r.collection.UpdateMany(ctx, filter, update, opts...)
+}
+
+// ReplaceOne replaces a single document matching the filter with the provided replacement
+func (r *AnnouncementRepository) ReplaceOne(ctx context.Context, filter bson.M, replacement *Announcement, opts ...options.Lister[options.ReplaceOptions]) (*mongo.UpdateResult, error) {
+	return r.collection.ReplaceOne(ctx, filter, replacement, opts...)
 }
 
 // DeleteByID removes a document by ID
@@ -69,9 +79,14 @@ func (r *AnnouncementRepository) DeleteByID(ctx context.Context, id primitive.Ob
 	return r.collection.DeleteOne(ctx, bson.M{"_id": id})
 }
 
+// DeleteOne removes a single document matching the filter
+func (r *AnnouncementRepository) DeleteOne(ctx context.Context, filter bson.M, opts ...options.Lister[options.DeleteOneOptions]) (*mongo.DeleteResult, error) {
+	return r.collection.DeleteOne(ctx, filter, opts...)
+}
+
 // DeleteMany removes documents matching the filter
-func (r *AnnouncementRepository) DeleteMany(ctx context.Context, filter bson.M) (*mongo.DeleteResult, error) {
-	return r.collection.DeleteMany(ctx, filter)
+func (r *AnnouncementRepository) DeleteMany(ctx context.Context, filter bson.M, opts ...options.Lister[options.DeleteManyOptions]) (*mongo.DeleteResult, error) {
+	return r.collection.DeleteMany(ctx, filter, opts...)
 }
 
 // --- Advanced Operations ---
@@ -84,6 +99,31 @@ func (r *AnnouncementRepository) FindOneAndUpdate(ctx context.Context, filter bs
 	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
 
 	err := r.collection.FindOneAndUpdate(ctx, filter, update, opts).Decode(&model)
+	if err != nil {
+		return nil, err
+	}
+	return &model, nil
+}
+
+// FindOneAndReplace performs an atomic find and replace operation
+// Returns the *replaced* document (ReturnDocument: Before)
+func (r *AnnouncementRepository) FindOneAndReplace(ctx context.Context, filter bson.M, replacement *Announcement, opts ...options.Lister[options.FindOneAndReplaceOptions]) (*Announcement, error) {
+	var model Announcement
+	defaultOpts := options.FindOneAndReplace().SetReturnDocument(options.Before)
+	combinedOpts := append([]options.Lister[options.FindOneAndReplaceOptions]{defaultOpts}, opts...)
+
+	err := r.collection.FindOneAndReplace(ctx, filter, replacement, combinedOpts...).Decode(&model)
+	if err != nil {
+		return nil, err
+	}
+	return &model, nil
+}
+
+// FindOneAndDelete performs an atomic find and delete operation
+// Returns the *deleted* document
+func (r *AnnouncementRepository) FindOneAndDelete(ctx context.Context, filter bson.M, opts ...options.Lister[options.FindOneAndDeleteOptions]) (*Announcement, error) {
+	var model Announcement
+	err := r.collection.FindOneAndDelete(ctx, filter, opts...).Decode(&model)
 	if err != nil {
 		return nil, err
 	}
@@ -106,6 +146,11 @@ func (r *AnnouncementRepository) Count(ctx context.Context, filter bson.M) (int6
 func (r *AnnouncementRepository) Distinct(ctx context.Context, fieldName string, filter bson.M) (*mongo.DistinctResult, error) {
 	res := r.collection.Distinct(ctx, fieldName, filter)
 	return res, res.Err()
+}
+
+// BulkWrite performs multiple write operations in bulk
+func (r *AnnouncementRepository) BulkWrite(ctx context.Context, models []mongo.WriteModel, opts ...options.Lister[options.BulkWriteOptions]) (*mongo.BulkWriteResult, error) {
+	return r.collection.BulkWrite(ctx, models, opts...)
 }
 
 // --- Search, Pagination & Aggregation ---

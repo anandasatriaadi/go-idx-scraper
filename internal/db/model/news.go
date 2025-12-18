@@ -5,5 +5,6 @@ type News struct {
 	Title   string `bson:"title"`
 	Date    string `bson:"date"`
 	Summary string `bson:"summary"`
-	Source  string `bson:"source"`
+	Content string `bson:"content"`
+	Link    string `bson:"link"`
 }

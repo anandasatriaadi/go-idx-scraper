@@ -4,15 +4,15 @@ import (
 	"encoding/json"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 //go:generate mongogen -type=LastRun -collection=last_runs
 type LastRun struct {
-	ID         primitive.ObjectID `bson:"_id,omitempty"`
-	ScriptName string             `bson:"scriptName"`
-	LastRunAt  time.Time          `bson:"lastRunAt"`
-	Metadata   map[string]any     `bson:"metadata"`
+	ID         bson.ObjectID  `bson:"_id,omitempty"`
+	ScriptName string         `bson:"scriptName"`
+	LastRunAt  time.Time      `bson:"lastRunAt"`
+	Metadata   map[string]any `bson:"metadata"`
 }
 
 // ParseMetadata unmarshals the Metadata map into the provided target struct.
@@ -21,7 +21,7 @@ type LastRun struct {
 //
 //	var myStruct SomeType
 //	err := lr.ParseMetadata(&myStruct)
-func (lr *LastRun) ParseMetadata(target interface{}) error {
+func (lr *LastRun) ParseMetadata(target any) error {
 	data, err := json.Marshal(lr.Metadata)
 	if err != nil {
 		return err

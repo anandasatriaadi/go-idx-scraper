@@ -1,6 +1,7 @@
 package model
 
 import (
+	"strings"
 	"time"
 
 	"github.com/anandasatriaadi/go-idx-scraper/internal/types"
@@ -32,6 +33,7 @@ type Announcement struct {
 func ParseAPIResponse(apiResp types.APIResponse) ([]*Announcement, error) {
 	var announcements []*Announcement
 	for _, reply := range apiResp.Replies {
+		trimmedTicker := strings.Trim(*reply.Announcement.KodeEmiten, " ")
 		ann := &Announcement{
 			ID:                reply.Announcement.ID,
 			EfekEmitenDire:    reply.Announcement.EfekEmitenDire,
@@ -41,7 +43,7 @@ func ParseAPIResponse(apiResp types.APIResponse) ([]*Announcement, error) {
 			NoPengumuman:      reply.Announcement.NoPengumuman,
 			JudulPengumuman:   reply.Announcement.JudulPengumuman,
 			JenisPengumuman:   reply.Announcement.JenisPengumuman,
-			KodeEmiten:        reply.Announcement.KodeEmiten,
+			KodeEmiten:        &trimmedTicker,
 			FormId:            reply.Announcement.FormId,
 			PerihalPengumuman: reply.Announcement.PerihalPengumuman,
 			JmsxGroupId:       reply.Announcement.JmsxGroupId,
