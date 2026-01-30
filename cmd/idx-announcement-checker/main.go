@@ -6,7 +6,10 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -109,11 +112,10 @@ func main() {
 	lRepo := model.NewLastRunRepository(database.GetDatabase("idx"))
 	lr, err := lRepo.FindOne(ctx, bson.M{"scriptName": "idx-announcement"})
 	var dateFrom string
-	var latestID string
+	var latestDate *time.Time
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			dateFrom = time.Unix(0, 0).Format("20060102")
-			latestID = ""
 		} else {
 			logger.Error("Failed to find last run", zap.Error(err))
 			cancel()
@@ -121,22 +123,24 @@ func main() {
 		}
 	} else {
 		dateFrom = lr.LastRunAt.Format("20060102")
-		if lid, ok := lr.Metadata["latestId"].(string); ok {
-			latestID = lid
-		} else {
-			latestID = ""
+		if ldate, ok := lr.Metadata["latest_date"].(bson.DateTime); ok {
+			tempDate := ldate.Time().Add(-8 * time.Hour)
+			latestDate = &tempDate
+			logger.Info("Loaded latestDate from last run", zap.Time("latestDate", *latestDate))
 		}
 	}
 
 	var data string
 	// get page data as string
 	dateTo := time.Now().AddDate(0, 0, 1).Format("20060102")
-	url := `https://www.idx.co.id/primary/ListedCompany/GetAnnouncement?kodeEmiten=&emitenType=s&indexFrom=0&pageSize=200&dateFrom=` + dateFrom + `&dateTo=` + dateTo + `&lang=id&keyword=`
+	url := `https://www.idx.co.id/primary/ListedCompany/GetAnnouncement?kodeEmiten=&emitenType=s&indexFrom=0&pageSize=500&dateFrom=` + dateFrom + `&dateTo=` + dateTo + `&lang=id&keyword=`
+	logger.Info("Starting data scrape", zap.String("dateFrom", dateFrom), zap.String("dateTo", dateTo))
 	if err := chromedp.Run(ctx, getPageData(url, &data)); err != nil {
 		logger.Error("Failed to run chromedp", zap.Error(err))
 		cancel()
 		os.Exit(1)
 	}
+	logger.Info("Data scraped successfully")
 	if err := os.WriteFile("data.json", []byte(data), 0o644); err != nil {
 		logger.Error("Failed to write file", zap.Error(err))
 		cancel()
@@ -156,16 +160,38 @@ func main() {
 		cancel()
 		os.Exit(1)
 	}
+	logger.Info("Announcements parsed", zap.Int("count", len(announcements)))
 
-	// Filter announcements based on latestID
+	aRepo := model.NewAnnouncementRepository(database.GetDatabase("idx"))
+	existingDocs, err := aRepo.FindAll(ctx, bson.M{}, options.Find().SetProjection(bson.D{{Key: "_id", Value: 1}}).SetSort(bson.M{"created_date": -1}).SetLimit(500))
+	if err != nil {
+		logger.Error("Failed to check existing announcements", zap.Error(err))
+		cancel()
+		os.Exit(1)
+	}
+	exists := make(map[string]bool)
+	for _, doc := range existingDocs {
+		exists[doc.ID] = true
+	}
+	logger.Info("Existing announcements checked", zap.Int("existing", len(exists)))
+
+	// Filter announcements based on latestDate and existence in DB
 	var filtered []*model.Announcement
 	for _, ann := range announcements {
-		if ann.ID > latestID {
+		annStr := ann.CreatedDate.Format("20060102150405")
+		annInt, _ := strconv.Atoi(annStr)
+		var latestInt int
+		if latestDate != nil {
+			latestStr := latestDate.Format("20060102150405")
+			latestInt, _ = strconv.Atoi(latestStr)
+		}
+		if (latestDate == nil || annInt > latestInt) && !exists[ann.ID] {
+			logger.Info("New announcement found", zap.String("ID", ann.ID), zap.Time("CreatedDate", *ann.CreatedDate))
 			filtered = append(filtered, ann)
 		}
 	}
+	logger.Info("Announcements filtered", zap.Int("new", len(filtered)))
 
-	aRepo := model.NewAnnouncementRepository(database.GetDatabase("idx"))
 	if len(filtered) > 0 {
 		if _, err := aRepo.CreateMany(ctx, filtered); err != nil {
 			logger.Error("Failed to create announcements", zap.Error(err))
@@ -179,8 +205,14 @@ func main() {
 	}
 
 	// Update latestID if we have new data
-	if len(announcements) > 0 {
-		latestID = announcements[0].ID
+	if len(filtered) > 0 {
+		latestAnn, err := aRepo.FindOne(ctx, bson.M{}, options.FindOne().SetSort(bson.M{"created_date": -1}))
+		if err != nil {
+			logger.Error("Failed to get latest announcement", zap.Error(err))
+			cancel()
+			os.Exit(1)
+		}
+		latestDate = latestAnn.CreatedDate
 	}
 
 	{
@@ -189,7 +221,7 @@ func main() {
 		update := bson.M{"$set": bson.M{
 			"scriptName": "idx-announcement",
 			"lastRunAt":  time.Now(),
-			"metadata":   bson.M{"latestId": latestID},
+			"metadata":   bson.M{"latest_date": latestDate},
 		}}
 		opts := options.UpdateOne().SetUpsert(true)
 		if _, err := lRepo.UpdateOne(ctx, filter, update, opts); err != nil {
@@ -197,13 +229,54 @@ func main() {
 			cancel()
 			os.Exit(1)
 		}
+		logger.Info("Last run saved")
 
-		content, err := helper.GenerateAnnouncementEmail(announcements)
-		if err != nil {
-			logger.Error("Failed to generate email content", zap.Error(err))
+		// Filter announcements to exclude specific titles
+		excludedTitles := []string{
+			"laporanbulananregistrasipemegangefek",
+			"penjelasanatasvolatilitastransaksi",
+			"penyampaianbuktiiklan",
 		}
-		if err := helper.SendAnnouncementMail(content, cfg); err != nil {
-			logger.Error("Failed to send email", zap.Error(err))
+
+		var emailFiltered []*model.Announcement
+		for _, ann := range filtered {
+			if ann.JudulPengumuman != nil {
+				// Remove non-alphabetic characters and whitespace
+				re := regexp.MustCompile(`[^a-zA-Z]`)
+				normalizedTitle := re.ReplaceAllString(*ann.JudulPengumuman, "")
+				normalizedTitle = strings.TrimSpace(normalizedTitle)
+				normalizedTitle = strings.ToLower(normalizedTitle)
+
+				excluded := false
+				for _, pattern := range excludedTitles {
+					if regexp.MustCompile(`^` + pattern).MatchString(normalizedTitle) {
+						excluded = true
+						logger.Info("Announcement excluded from email", zap.String("title", *ann.JudulPengumuman))
+						break
+					}
+				}
+				if !excluded {
+					emailFiltered = append(emailFiltered, ann)
+				}
+			} else {
+				emailFiltered = append(emailFiltered, ann)
+			}
+		}
+
+		if len(emailFiltered) > 0 {
+			content, err := helper.GenerateAnnouncementEmail(emailFiltered)
+			if err != nil {
+				logger.Error("Failed to generate email content", zap.Error(err))
+			} else {
+				logger.Info("Email content generated")
+			}
+			if err := helper.SendAnnouncementMail(content, cfg); err != nil {
+				logger.Error("Failed to send email", zap.Error(err))
+			} else {
+				logger.Info("Email sent successfully")
+			}
+		} else {
+			logger.Info("No announcements to send after filtering excluded titles")
 		}
 	}
 

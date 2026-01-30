@@ -4,18 +4,33 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"go/ast"
 	"go/format"
+	"go/parser"
+	"go/token"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 	"text/template"
 )
 
 // Config holds the data used to populate the template
 type Config struct {
-	PackageName string
-	StructName  string
-	TableName   string
+	PackageName    string
+	StructName     string
+	TableName      string
+	CreatedAtField string
+	UpdatedAtField string
+}
+
+func toSnakeCase(s string) string {
+	matchFirstCap := regexp.MustCompile(`(.)([A-Z][a-z]+)`)
+	matchAllCap := regexp.MustCompile(`([a-z0-9])([A-Z])`)
+
+	snake := matchFirstCap.ReplaceAllString(s, `${1}_${2}`)
+	snake = matchAllCap.ReplaceAllString(snake, `${1}_${2}`)
+	return strings.ToLower(snake)
 }
 
 var outputTemplate = `
@@ -24,8 +39,8 @@ package {{.PackageName}}
 
 import (
 	"context"
+{{if or .CreatedAtField .UpdatedAtField}}	"time"{{end}}
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -46,17 +61,24 @@ func New{{.StructName}}Repository(db *mongo.Database) *{{.StructName}}Repository
 // --- Basic CRUD ---
 
 // Create inserts a single {{.StructName}}
-func (r *{{.StructName}}Repository) Create(ctx context.Context, model *{{.StructName}}) (*mongo.InsertOneResult, error) {
-	return r.collection.InsertOne(ctx, model)
+func (r *{{.StructName}}Repository) Create(ctx context.Context, model *{{.StructName}}, opts ...options.Lister[options.InsertOneOptions]) (*mongo.InsertOneResult, error) {
+{{if .CreatedAtField}}	model.{{.CreatedAtField}} = time.Now()
+{{end}}{{if .UpdatedAtField}}	model.{{.UpdatedAtField}} = time.Now()
+{{end}}	return r.collection.InsertOne(ctx, model, opts...)
 }
 
 // CreateMany inserts multiple {{.StructName}} documents
 func (r *{{.StructName}}Repository) CreateMany(ctx context.Context, models []*{{.StructName}}, opts ...options.Lister[options.InsertManyOptions]) (*mongo.InsertManyResult, error) {
-	return r.collection.InsertMany(ctx, models, opts...)
+{{if or .CreatedAtField .UpdatedAtField}}	now := time.Now()
+	for _, model := range models {
+{{if .CreatedAtField}}		model.{{.CreatedAtField}} = now{{end}}
+{{if .UpdatedAtField}}		model.{{.UpdatedAtField}} = now{{end}}
+	}
+{{end}}	return r.collection.InsertMany(ctx, models, opts...)
 }
 
 // FindByID retrieves a document by its _id
-func (r *{{.StructName}}Repository) FindByID(ctx context.Context, id primitive.ObjectID) (*{{.StructName}}, error) {
+func (r *{{.StructName}}Repository) FindByID(ctx context.Context, id bson.ObjectID) (*{{.StructName}}, error) {
 	var model {{.StructName}}
 	err := r.collection.FindOne(ctx, bson.M{"_id": id}).Decode(&model)
 	if err != nil {
@@ -66,9 +88,9 @@ func (r *{{.StructName}}Repository) FindByID(ctx context.Context, id primitive.O
 }
 
 // FindOne retrieves a single document matching the filter
-func (r *{{.StructName}}Repository) FindOne(ctx context.Context, filter bson.M) (*{{.StructName}}, error) {
+func (r *{{.StructName}}Repository) FindOne(ctx context.Context, filter bson.M, opts ...options.Lister[options.FindOneOptions]) (*{{.StructName}}, error) {
 	var model {{.StructName}}
-	err := r.collection.FindOne(ctx, filter).Decode(&model)
+	err := r.collection.FindOne(ctx, filter, opts...).Decode(&model)
 	if err != nil {
 		return nil, err
 	}
@@ -76,28 +98,50 @@ func (r *{{.StructName}}Repository) FindOne(ctx context.Context, filter bson.M) 
 }
 
 // UpdateByID updates a document by ID using the full update bson map (e.g., bson.M{"$set": fields} or bson.M{"$inc": ...})
-func (r *{{.StructName}}Repository) UpdateByID(ctx context.Context, id primitive.ObjectID, update bson.M) (*mongo.UpdateResult, error) {
-	return r.collection.UpdateOne(ctx, bson.M{"_id": id}, update)
+func (r *{{.StructName}}Repository) UpdateByID(ctx context.Context, id bson.ObjectID, update bson.M, opts ...options.Lister[options.UpdateOneOptions]) (*mongo.UpdateResult, error) {
+{{if .UpdatedAtField}}	// Ensure UpdatedAt is set
+	if _, ok := update["$set"]; !ok {
+		update["$set"] = bson.M{}
+	}
+	if setMap, ok := update["$set"].(bson.M); ok {
+		setMap["updated_at"] = time.Now()
+	}
+{{end}}	return r.collection.UpdateOne(ctx, bson.M{"_id": id}, update, opts...)
 }
 
 // UpdateOne updates a single document matching the filter using the full update bson map
 func (r *{{.StructName}}Repository) UpdateOne(ctx context.Context, filter bson.M, update bson.M, opts ...options.Lister[options.UpdateOneOptions]) (*mongo.UpdateResult, error) {
-	return r.collection.UpdateOne(ctx, filter, update, opts...)
+{{if .UpdatedAtField}}	// Ensure UpdatedAt is set
+	if _, ok := update["$set"]; !ok {
+		update["$set"] = bson.M{}
+	}
+	if setMap, ok := update["$set"].(bson.M); ok {
+		setMap["updated_at"] = time.Now()
+	}
+{{end}}	return r.collection.UpdateOne(ctx, filter, update, opts...)
 }
 
 // UpdateMany updates multiple documents matching the filter using the full update bson map
 func (r *{{.StructName}}Repository) UpdateMany(ctx context.Context, filter bson.M, update bson.M, opts ...options.Lister[options.UpdateManyOptions]) (*mongo.UpdateResult, error) {
-	return r.collection.UpdateMany(ctx, filter, update, opts...)
+{{if .UpdatedAtField}}	// Ensure UpdatedAt is set
+	if _, ok := update["$set"]; !ok {
+		update["$set"] = bson.M{}
+	}
+	if setMap, ok := update["$set"].(bson.M); ok {
+		setMap["updated_at"] = time.Now()
+	}
+{{end}}	return r.collection.UpdateMany(ctx, filter, update, opts...)
 }
 
 // ReplaceOne replaces a single document matching the filter with the provided replacement
 func (r *{{.StructName}}Repository) ReplaceOne(ctx context.Context, filter bson.M, replacement *{{.StructName}}, opts ...options.Lister[options.ReplaceOptions]) (*mongo.UpdateResult, error) {
-	return r.collection.ReplaceOne(ctx, filter, replacement, opts...)
+{{if .UpdatedAtField}}	replacement.{{.UpdatedAtField}} = time.Now()
+{{end}}	return r.collection.ReplaceOne(ctx, filter, replacement, opts...)
 }
 
 // DeleteByID removes a document by ID
-func (r *{{.StructName}}Repository) DeleteByID(ctx context.Context, id primitive.ObjectID) (*mongo.DeleteResult, error) {
-	return r.collection.DeleteOne(ctx, bson.M{"_id": id})
+func (r *{{.StructName}}Repository) DeleteByID(ctx context.Context, id bson.ObjectID, opts ...options.Lister[options.DeleteOneOptions]) (*mongo.DeleteResult, error) {
+	return r.collection.DeleteOne(ctx, bson.M{"_id": id}, opts...)
 }
 
 // DeleteOne removes a single document matching the filter
@@ -115,11 +159,12 @@ func (r *{{.StructName}}Repository) DeleteMany(ctx context.Context, filter bson.
 // FindOneAndUpdate performs an atomic find and update operation
 // Returns the *updated* document (ReturnDocument: After)
 // update is the full update document, e.g., bson.M{"$set": fields} or bson.M{"$inc": ...}
-func (r *{{.StructName}}Repository) FindOneAndUpdate(ctx context.Context, filter bson.M, update bson.M) (*{{.StructName}}, error) {
+func (r *{{.StructName}}Repository) FindOneAndUpdate(ctx context.Context, filter bson.M, update bson.M, opts ...options.Lister[options.FindOneAndUpdateOptions]) (*{{.StructName}}, error) {
 	var model {{.StructName}}
-	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+	defaultOpts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+	combinedOpts := append([]options.Lister[options.FindOneAndUpdateOptions]{defaultOpts}, opts...)
 
-	err := r.collection.FindOneAndUpdate(ctx, filter, update, opts).Decode(&model)
+	err := r.collection.FindOneAndUpdate(ctx, filter, update, combinedOpts...).Decode(&model)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +174,8 @@ func (r *{{.StructName}}Repository) FindOneAndUpdate(ctx context.Context, filter
 // FindOneAndReplace performs an atomic find and replace operation
 // Returns the *replaced* document (ReturnDocument: Before)
 func (r *{{.StructName}}Repository) FindOneAndReplace(ctx context.Context, filter bson.M, replacement *{{.StructName}}, opts ...options.Lister[options.FindOneAndReplaceOptions]) (*{{.StructName}}, error) {
-	var model {{.StructName}}
+{{if .UpdatedAtField}}	replacement.{{.UpdatedAtField}} = time.Now()
+{{end}}	var model {{.StructName}}
 	defaultOpts := options.FindOneAndReplace().SetReturnDocument(options.Before)
 	combinedOpts := append([]options.Lister[options.FindOneAndReplaceOptions]{defaultOpts}, opts...)
 
@@ -153,9 +199,45 @@ func (r *{{.StructName}}Repository) FindOneAndDelete(ctx context.Context, filter
 
 // Upsert updates a document if it exists, or creates it if it doesn't
 // update is the full update document, e.g., bson.M{"$set": fields} or bson.M{"$inc": ...}
-func (r *{{.StructName}}Repository) Upsert(ctx context.Context, id primitive.ObjectID, update bson.M) (*mongo.UpdateResult, error) {
-	opts := options.UpdateOne().SetUpsert(true)
-	return r.collection.UpdateOne(ctx, bson.M{"_id": id}, update, opts)
+func (r *{{.StructName}}Repository) Upsert(ctx context.Context, id bson.ObjectID, update bson.M, opts ...options.Lister[options.UpdateOneOptions]) (*mongo.UpdateResult, error) {
+{{if or .CreatedAtField .UpdatedAtField}}	// Ensure timestamps are set
+	if _, ok := update["$set"]; !ok {
+		update["$set"] = bson.M{}
+	}
+	if setMap, ok := update["$set"].(bson.M); ok {
+{{if .CreatedAtField}}		// Set CreatedAt only on insert using $setOnInsert
+		if _, ok := update["$setOnInsert"]; !ok {
+			update["$setOnInsert"] = bson.M{}
+		}
+		if setOnInsertMap, ok := update["$setOnInsert"].(bson.M); ok {
+			setOnInsertMap["created_at"] = time.Now()
+		}
+{{end}}{{if .UpdatedAtField}}		setMap["updated_at"] = time.Now()
+{{end}}	}
+{{end}}	defaultOpts := options.UpdateOne().SetUpsert(true)
+	combinedOpts := append([]options.Lister[options.UpdateOneOptions]{defaultOpts}, opts...)
+	return r.collection.UpdateOne(ctx, bson.M{"_id": id}, update, combinedOpts...)
+}
+
+// UpsertOne upserts a single document matching the filter
+func (r *{{.StructName}}Repository) UpsertOne(ctx context.Context, filter bson.M, update bson.M, opts ...options.Lister[options.UpdateOneOptions]) (*mongo.UpdateResult, error) {
+{{if or .CreatedAtField .UpdatedAtField}}	// Ensure timestamps are set
+	if _, ok := update["$set"]; !ok {
+		update["$set"] = bson.M{}
+	}
+	if setMap, ok := update["$set"].(bson.M); ok {
+{{if .CreatedAtField}}		// Set CreatedAt only on insert using $setOnInsert
+		if _, ok := update["$setOnInsert"]; !ok {
+			update["$setOnInsert"] = bson.M{}
+		}
+		if setOnInsertMap, ok := update["$setOnInsert"].(bson.M); ok {
+			setOnInsertMap["created_at"] = time.Now()
+		}
+{{end}}{{if .UpdatedAtField}}		setMap["updated_at"] = time.Now()
+{{end}}	}
+{{end}}	defaultOpts := options.UpdateOne().SetUpsert(true)
+	combinedOpts := append([]options.Lister[options.UpdateOneOptions]{defaultOpts}, opts...)
+	return r.collection.UpdateOne(ctx, filter, update, combinedOpts...)
 }
 
 // Count returns the number of documents matching a filter
@@ -169,6 +251,12 @@ func (r *{{.StructName}}Repository) Distinct(ctx context.Context, fieldName stri
 	return res, res.Err()
 }
 
+// Exists checks if a document exists by ID
+func (r *{{.StructName}}Repository) Exists(ctx context.Context, id bson.ObjectID) (bool, error) {
+	count, err := r.collection.CountDocuments(ctx, bson.M{"_id": id}, options.Count().SetLimit(1))
+	return count > 0, err
+}
+
 // BulkWrite performs multiple write operations in bulk
 func (r *{{.StructName}}Repository) BulkWrite(ctx context.Context, models []mongo.WriteModel, opts ...options.Lister[options.BulkWriteOptions]) (*mongo.BulkWriteResult, error) {
 	return r.collection.BulkWrite(ctx, models, opts...)
@@ -177,8 +265,8 @@ func (r *{{.StructName}}Repository) BulkWrite(ctx context.Context, models []mong
 // --- Search, Pagination & Aggregation ---
 
 // FindAll retrieves all documents matching a filter
-func (r *{{.StructName}}Repository) FindAll(ctx context.Context, filter bson.M) ([]*{{.StructName}}, error) {
-	cursor, err := r.collection.Find(ctx, filter)
+func (r *{{.StructName}}Repository) FindAll(ctx context.Context, filter bson.M, opts ...options.Lister[options.FindOptions]) ([]*{{.StructName}}, error) {
+	cursor, err := r.collection.Find(ctx, filter, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -191,8 +279,13 @@ func (r *{{.StructName}}Repository) FindAll(ctx context.Context, filter bson.M) 
 	return results, nil
 }
 
+// Find returns a cursor for documents matching the filter
+func (r *{{.StructName}}Repository) Find(ctx context.Context, filter bson.M, opts ...options.Lister[options.FindOptions]) (*mongo.Cursor, error) {
+	return r.collection.Find(ctx, filter, opts...)
+}
+
 // FindPage retrieves a page of documents with sorting options
-func (r *{{.StructName}}Repository) FindPage(ctx context.Context, filter bson.M, page int64, limit int64, sort interface{}) ([]*{{.StructName}}, int64, error) {
+func (r *{{.StructName}}Repository) FindPage(ctx context.Context, filter bson.M, page int64, limit int64, sort bson.D, opts ...options.Lister[options.FindOptions]) ([]*{{.StructName}}, int64, error) {
 	skip := (page - 1) * limit
 	if skip < 0 {
 		skip = 0
@@ -203,8 +296,10 @@ func (r *{{.StructName}}Repository) FindPage(ctx context.Context, filter bson.M,
 		return nil, 0, err
 	}
 
-	opts := options.Find().SetLimit(limit).SetSkip(skip).SetSort(sort)
-	cursor, err := r.collection.Find(ctx, filter, opts)
+	defaultOpts := options.Find().SetLimit(limit).SetSkip(skip).SetSort(sort)
+	combinedOpts := append([]options.Lister[options.FindOptions]{defaultOpts}, opts...)
+
+	cursor, err := r.collection.Find(ctx, filter, combinedOpts...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -228,10 +323,14 @@ func (r *{{.StructName}}Repository) Aggregate(ctx context.Context, pipeline mong
 func (r *{{.StructName}}Repository) Watch(ctx context.Context, pipeline mongo.Pipeline) (*mongo.ChangeStream, error) {
 	return r.collection.Watch(ctx, pipeline)
 }
+
+// Collection returns the underlying mongo collection for advanced operations
+func (r *{{.StructName}}Repository) Collection() *mongo.Collection {
+	return r.collection
+}
 `
 
 func main() {
-	// Parse flags
 	typePtr := flag.String("type", "", "The struct name to generate code for")
 	collectionPtr := flag.String("collection", "", "The mongodb collection name (optional, defaults to lowercase struct name)")
 	flag.Parse()
@@ -240,7 +339,12 @@ func main() {
 		log.Fatal("type argument is required")
 	}
 
-	// Gather environment info provided by go generate
+	if matched, err := regexp.MatchString(`^[a-zA-Z_][a-zA-Z0-9_]*$`, *typePtr); err != nil || !matched {
+		log.Fatal("type must be a valid Go identifier")
+	}
+
+	// go generate sets the GOPACKAGE environment variable to the package name of the file that contains the generate directive.
+	// We use this to ensure the generated code is in the correct package.
 	pkg := os.Getenv("GOPACKAGE")
 	if pkg == "" {
 		log.Fatal("GOPACKAGE environment variable not set")
@@ -251,13 +355,66 @@ func main() {
 		col = strings.ToLower(*typePtr) + "s"
 	}
 
-	config := Config{
-		PackageName: pkg,
-		StructName:  *typePtr,
-		TableName:   col,
+	// We need to parse the source files in the current directory to find the struct definition.
+	// This allows us to inspect the struct fields and automatically handle fields like CreatedAt and UpdatedAt.
+	var createdAtField, updatedAtField string
+	fset := token.NewFileSet()
+
+	// ReadDir returns all entries in the directory. We will filter for .go files to parse.
+	entries, _ := os.ReadDir(".")
+
+	found := false
+	for _, entry := range entries {
+		if found {
+			break
+		}
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
+			continue
+		}
+		// Skip files ignored by build tool (starting with . or _) to match parser.ParseDir behavior
+		if strings.HasPrefix(entry.Name(), ".") || strings.HasPrefix(entry.Name(), "_") {
+			continue
+		}
+
+		f, err := parser.ParseFile(fset, entry.Name(), nil, 0)
+		if err != nil {
+			continue
+		}
+
+		// Traverse the AST to find the struct type specification matching the requested type name
+		ast.Inspect(f, func(n ast.Node) bool {
+			if t, ok := n.(*ast.TypeSpec); ok {
+				if t.Name.Name == *typePtr {
+					// Struct found, inspect fields
+					if st, ok := t.Type.(*ast.StructType); ok {
+						for _, field := range st.Fields.List {
+							for _, name := range field.Names {
+								lower := strings.ToLower(strings.ReplaceAll(name.Name, "_", ""))
+								if lower == "createdat" {
+									createdAtField = name.Name
+								}
+								if lower == "updatedat" {
+									updatedAtField = name.Name
+								}
+							}
+						}
+					}
+					found = true
+					return false // Stop traversal
+				}
+			}
+			return true
+		})
 	}
 
-	// Execute Template
+	config := Config{
+		PackageName:    pkg,
+		StructName:     *typePtr,
+		TableName:      col,
+		CreatedAtField: createdAtField,
+		UpdatedAtField: updatedAtField,
+	}
+
 	t, err := template.New("mongo").Parse(outputTemplate)
 	if err != nil {
 		log.Fatal(err)
@@ -269,14 +426,13 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Format the code
+	// Run gofmt on the generated code
 	formatted, err := format.Source(buf.Bytes())
 	if err != nil {
 		log.Fatalf("formatting error: %s", err)
 	}
 
-	// Write to file
-	filename := fmt.Sprintf("%s_mongo.go", strings.ToLower(*typePtr))
+	filename := fmt.Sprintf("%s_mongo.go", toSnakeCase(*typePtr))
 	err = os.WriteFile(filename, formatted, 0644)
 	if err != nil {
 		log.Fatal(err)

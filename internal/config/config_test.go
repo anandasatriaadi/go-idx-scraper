@@ -14,7 +14,7 @@ paths:
   download_dir: /tmp
   check_dir: /tmp
 mailing:
-  mailing_list:
+  list:
     - test@example.com
 download:
   year: 2023

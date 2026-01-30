@@ -7,11 +7,11 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-//go:generate mongogen -type=LastRun -collection=last_runs
+//go:generate go run ../../../generator/mongogen/main.go -type=LastRun -collection=last_runs
 type LastRun struct {
 	ID         bson.ObjectID  `bson:"_id,omitempty"`
-	ScriptName string         `bson:"scriptName"`
-	LastRunAt  time.Time      `bson:"lastRunAt"`
+	ScriptName string         `bson:"script_name"`
+	LastRunAt  time.Time      `bson:"last_run_at"`
 	Metadata   map[string]any `bson:"metadata"`
 }
 
@@ -27,13 +27,4 @@ func (lr *LastRun) ParseMetadata(target any) error {
 		return err
 	}
 	return json.Unmarshal(data, target)
-}
-
-type NewsLastRun struct {
-	LastID   string `json:"lastID"`
-	LastDate string `json:"lastDate"`
-}
-
-type KontanLastRun struct {
-	LastDate string `json:"lastDate"`
 }

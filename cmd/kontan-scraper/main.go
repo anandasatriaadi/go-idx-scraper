@@ -12,8 +12,12 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	br "github.com/anandasatriaadi/go-idx-scraper/internal/browser"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/db"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/db/model"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
 	"github.com/chromedp/chromedp"
 	"github.com/microcosm-cc/bluemonday"
+	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.uber.org/zap"
 )
 
@@ -76,47 +80,159 @@ func main() {
 		return
 	}
 
+	// Connect to MongoDB
+	ctx := context.Background()
+	db, err := db.New(logger)
+	if err != nil {
+		logger.Fatal("Failed to connect to MongoDB", zap.Error(err))
+	}
+	repo := model.NewNewsRepository(db.GetDatabase("idx"))
+
+	// Parse start and end dates from command line arguments
+	now := time.Now()
+	var startDate, endDate time.Time
+	if len(os.Args) == 2 {
+		startDate = now
+		endDate = now
+	} else if len(os.Args) == 3 {
+		startDate, err = time.Parse("2006-01-02", os.Args[2])
+		if err != nil {
+			logger.Fatal("Failed to parse startDate", zap.Error(err))
+		}
+		endDate = startDate
+	} else if len(os.Args) == 4 {
+		startDate, err = time.Parse("2006-01-02", os.Args[2])
+		if err != nil {
+			logger.Fatal("Failed to parse startDate", zap.Error(err))
+		}
+		endDate, err = time.Parse("2006-01-02", os.Args[3])
+		if err != nil {
+			logger.Fatal("Failed to parse endDate", zap.Error(err))
+		}
+	} else {
+		logger.Fatal("Invalid number of arguments. Usage: <program> <config_file> [startDate] [endDate]")
+	}
+
 	// Setup Chromedp context
-	ctx, cancel := br.SetupChromeDp(cfg)
+	chromeCtx, cancel := br.SetupChromeDp(cfg)
 	defer cancel()
 
 	processor := NewHTMLToMarkdownProcessor(logger)
 
-	// Step 1: Extract and parse the article list HTML
-	htmlContent, err := fetchArticleListHTML(ctx)
-	if err != nil {
-		logger.Error("Failed to fetch article list HTML", zap.Error(err))
-		return
-	}
+	// Loop over each date in the range
+	articleIndex := 0
+	var ids []bson.ObjectID
+	for d := startDate; !d.After(endDate); d = d.AddDate(0, 0, 1) {
+		logger.Info("Fetching articles for date", zap.Time("date", d))
 
-	logger.Debug("Raw HTML Content from list", zap.String("html", htmlContent))
+		// Step 1: Extract and parse the article list HTML for the date, handling pagination
+		var allArticles []Article
+		perPage := 0
+		for {
+			htmlContent, err := fetchArticleListHTML(chromeCtx, d, perPage)
+			if err != nil {
+				logger.Error("Failed to fetch article list HTML", zap.Time("date", d), zap.Int("per_page", perPage), zap.Error(err))
+				break
+			}
 
-	// Step 2: Parse articles from the HTML
-	articles := parseArticlesFromHTML(htmlContent, logger)
-	logger.Info("Parsed articles count", zap.Int("count", len(articles)))
+			logger.Debug("Raw HTML Content from list", zap.String("html", htmlContent))
 
-	// Step 3: For each article, fetch full content from ".tmpt-desk-kon"
-	for i, art := range articles {
-		logger.Info("Fetching article content", zap.Int("index", i+1), zap.String("link", art.Link))
+			// Step 2: Parse articles from the HTML
+			articles := parseArticlesFromHTML(htmlContent, logger)
+			logger.Info("Parsed articles count for page", zap.Time("date", d), zap.Int("per_page", perPage), zap.Int("count", len(articles)))
 
-		articleHtml, err := fetchArticleContent(ctx, art.Link)
-		if err != nil {
-			logger.Error("Failed to fetch article content", zap.String("link", art.Link), zap.Error(err))
-			continue
+			// Append to all articles
+			allArticles = append(allArticles, articles...)
+
+			// If less than 20 articles, no more pages
+			if len(articles) < 20 {
+				break
+			}
+
+			perPage += 20
 		}
 
-		markdown, err := processor.Process(articleHtml)
-		if err != nil {
-			logger.Warn("Failed to process article content", zap.String("link", art.Link), zap.Error(err))
-			continue
+		logger.Info("Total articles for date", zap.Time("date", d), zap.Int("count", len(allArticles)))
+
+		// Step 3: For each article, fetch full content from ".tmpt-desk-kon"
+		for _, art := range allArticles {
+			articleIndex++
+			logger.Info("Fetching article content", zap.Int("index", articleIndex), zap.String("link", art.Link))
+
+			articleHtml, err := fetchArticleContent(chromeCtx, art.Link)
+			if err != nil {
+				logger.Error("Failed to fetch article content", zap.String("link", art.Link), zap.Error(err))
+				continue
+			}
+
+			markdown, err := processor.Process(articleHtml)
+			if err != nil {
+				logger.Warn("Failed to process article content", zap.String("link", art.Link), zap.Error(err))
+				continue
+			}
+
+			// Update article content
+			art.Content = markdown
+
+			// Parse date
+			dateParsed, err := parseDate(art.Date)
+			if err != nil {
+				logger.Warn("Failed to parse date", zap.String("dateStr", art.Date), zap.Error(err))
+				continue
+			}
+
+			// Create News model
+			news := &model.News{
+				Id:       bson.NewObjectID(),
+				Title:    art.Title,
+				Date:     dateParsed,
+				Summary:  "",
+				Content:  art.Content,
+				Priority: 10,
+				Link:     art.Link,
+			}
+
+			// Save to DB
+			_, err = repo.Create(ctx, news)
+			if err != nil {
+				logger.Error("Failed to save news to DB", zap.String("link", art.Link), zap.Error(err))
+				continue
+			}
+
+			ids = append(ids, news.Id)
 		}
-
-		// Update article content
-		articles[i].Content = markdown
-
-		// Output article summary (or save to file/DB)
-		outputArticle(i+1, articles[i])
 	}
+
+	if len(ids) > 0 {
+		err = helper.SummarizeNews(ctx, logger, ids, repo)
+		if err != nil {
+			logger.Error("Failed to summarize news", zap.Error(err))
+		}
+	}
+}
+
+// parseDate parses the date string into time.Time
+func parseDate(dateStr string) (time.Time, error) {
+	// Assuming format like "02 Januari 2023" - adjust as needed
+	// Map Indonesian months to English for parsing
+	monthMap := map[string]string{
+		"Januari":   "January",
+		"Februari":  "February",
+		"Maret":     "March",
+		"April":     "April",
+		"Mei":       "May",
+		"Juni":      "June",
+		"Juli":      "July",
+		"Agustus":   "August",
+		"September": "September",
+		"Oktober":   "October",
+		"November":  "November",
+		"Desember":  "December",
+	}
+	for id, en := range monthMap {
+		dateStr = strings.Replace(dateStr, id, en, -1)
+	}
+	return time.Parse("02 January 2006", dateStr)
 }
 
 // initializeLogger sets up the zap logger
@@ -133,14 +249,22 @@ func loadConfig() (*config.Config, error) {
 	return config.Load(configPath)
 }
 
-// fetchArticleListHTML fetches the HTML content of the article list
-func fetchArticleListHTML(ctx context.Context) (string, error) {
+// fetchArticleListHTML fetches the HTML content of the article list for a specific date and per_page
+func fetchArticleListHTML(ctx context.Context, date time.Time, perPage int) (string, error) {
 	var htmlContent string
-	url := "https://www.kontan.co.id/search/indeks?kanal=keuangan&tanggal=08&bulan=12&tahun=2025&pos=indeks&per_page="
+	var perPageStr string
+	if perPage == 0 {
+		perPageStr = ""
+	} else {
+		perPageStr = fmt.Sprintf("%d", perPage)
+	}
+	day := fmt.Sprintf("%02d", date.Day())
+	month := fmt.Sprintf("%02d", int(date.Month()))
+	year := date.Year()
+	url := fmt.Sprintf("https://www.kontan.co.id/search/indeks?kanal=investasi&tanggal=%s&bulan=%s&tahun=%d&pos=indeks&per_page=%s", day, month, year, perPageStr)
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(url),
-		chromedp.WaitVisible("div.list-berita > ul"),
-		chromedp.Sleep(1*time.Second), // Adjust for dynamic loading
+		chromedp.Sleep(200*time.Millisecond), // Adjust for dynamic loading
 		chromedp.InnerHTML("div.list-berita > ul", &htmlContent),
 	)
 	if err != nil {
@@ -155,6 +279,7 @@ func fetchArticleContent(ctx context.Context, link string) (string, error) {
 	var paginatedHtml string
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(link),
+		chromedp.Sleep(200*time.Millisecond), // Adjust for dynamic loading
 		chromedp.InnerHTML(".tmpt-desk-kon", &articleHtml),
 		chromedp.InnerHTML("div.pagination", &paginatedHtml),
 	)
@@ -171,12 +296,6 @@ func fetchArticleContent(ctx context.Context, link string) (string, error) {
 	}
 
 	return articleHtml, nil
-}
-
-// outputArticle prints the article details
-func outputArticle(index int, article Article) {
-	fmt.Printf("\n--- Article %d ---\nTitle: %s\nDate: %s\nCategory: %s\nLink: %s\nImage: %s\nContent:\n%s\n",
-		index, article.Title, article.Date, article.Category, article.Link, article.Image, article.Content)
 }
 
 // parseArticlesFromHTML (unchanged from previous version)
@@ -200,13 +319,8 @@ func parseArticlesFromHTML(htmlCode string, logger *zap.Logger) []Article {
 		if !strings.HasPrefix(link, "http") {
 			link = "https:" + link
 		}
-		ketText := s.Find(".ket").Text()
-		parts := strings.Split(strings.TrimSpace(ketText), "|")
-		category := strings.TrimSpace(parts[0])
-		date := ""
-		if len(parts) > 1 {
-			date = strings.TrimSpace(parts[1])
-		}
+		category := strings.TrimSpace(s.Find(".ket > div.fs14 span:first-child").Text())
+		date := strings.TrimSpace(strings.Split(s.Find(".ket > div.fs14").Children().Eq(1).Text(), "|")[1])
 		imgSrc, _ := s.Find(".pic > img").Attr("src")
 		dataSrc, _ := s.Find(".pic > img").Attr("data-src")
 		image := imgSrc

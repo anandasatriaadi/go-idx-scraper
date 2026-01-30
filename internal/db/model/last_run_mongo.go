@@ -4,7 +4,6 @@ package model
 import (
 	"context"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -25,8 +24,8 @@ func NewLastRunRepository(db *mongo.Database) *LastRunRepository {
 // --- Basic CRUD ---
 
 // Create inserts a single LastRun
-func (r *LastRunRepository) Create(ctx context.Context, model *LastRun) (*mongo.InsertOneResult, error) {
-	return r.collection.InsertOne(ctx, model)
+func (r *LastRunRepository) Create(ctx context.Context, model *LastRun, opts ...options.Lister[options.InsertOneOptions]) (*mongo.InsertOneResult, error) {
+	return r.collection.InsertOne(ctx, model, opts...)
 }
 
 // CreateMany inserts multiple LastRun documents
@@ -35,7 +34,7 @@ func (r *LastRunRepository) CreateMany(ctx context.Context, models []*LastRun, o
 }
 
 // FindByID retrieves a document by its _id
-func (r *LastRunRepository) FindByID(ctx context.Context, id primitive.ObjectID) (*LastRun, error) {
+func (r *LastRunRepository) FindByID(ctx context.Context, id bson.ObjectID) (*LastRun, error) {
 	var model LastRun
 	err := r.collection.FindOne(ctx, bson.M{"_id": id}).Decode(&model)
 	if err != nil {
@@ -45,9 +44,9 @@ func (r *LastRunRepository) FindByID(ctx context.Context, id primitive.ObjectID)
 }
 
 // FindOne retrieves a single document matching the filter
-func (r *LastRunRepository) FindOne(ctx context.Context, filter bson.M) (*LastRun, error) {
+func (r *LastRunRepository) FindOne(ctx context.Context, filter bson.M, opts ...options.Lister[options.FindOneOptions]) (*LastRun, error) {
 	var model LastRun
-	err := r.collection.FindOne(ctx, filter).Decode(&model)
+	err := r.collection.FindOne(ctx, filter, opts...).Decode(&model)
 	if err != nil {
 		return nil, err
 	}
@@ -55,8 +54,8 @@ func (r *LastRunRepository) FindOne(ctx context.Context, filter bson.M) (*LastRu
 }
 
 // UpdateByID updates a document by ID using the full update bson map (e.g., bson.M{"$set": fields} or bson.M{"$inc": ...})
-func (r *LastRunRepository) UpdateByID(ctx context.Context, id primitive.ObjectID, update bson.M) (*mongo.UpdateResult, error) {
-	return r.collection.UpdateOne(ctx, bson.M{"_id": id}, update)
+func (r *LastRunRepository) UpdateByID(ctx context.Context, id bson.ObjectID, update bson.M, opts ...options.Lister[options.UpdateOneOptions]) (*mongo.UpdateResult, error) {
+	return r.collection.UpdateOne(ctx, bson.M{"_id": id}, update, opts...)
 }
 
 // UpdateOne updates a single document matching the filter using the full update bson map
@@ -75,8 +74,8 @@ func (r *LastRunRepository) ReplaceOne(ctx context.Context, filter bson.M, repla
 }
 
 // DeleteByID removes a document by ID
-func (r *LastRunRepository) DeleteByID(ctx context.Context, id primitive.ObjectID) (*mongo.DeleteResult, error) {
-	return r.collection.DeleteOne(ctx, bson.M{"_id": id})
+func (r *LastRunRepository) DeleteByID(ctx context.Context, id bson.ObjectID, opts ...options.Lister[options.DeleteOneOptions]) (*mongo.DeleteResult, error) {
+	return r.collection.DeleteOne(ctx, bson.M{"_id": id}, opts...)
 }
 
 // DeleteOne removes a single document matching the filter
@@ -94,11 +93,12 @@ func (r *LastRunRepository) DeleteMany(ctx context.Context, filter bson.M, opts 
 // FindOneAndUpdate performs an atomic find and update operation
 // Returns the *updated* document (ReturnDocument: After)
 // update is the full update document, e.g., bson.M{"$set": fields} or bson.M{"$inc": ...}
-func (r *LastRunRepository) FindOneAndUpdate(ctx context.Context, filter bson.M, update bson.M) (*LastRun, error) {
+func (r *LastRunRepository) FindOneAndUpdate(ctx context.Context, filter bson.M, update bson.M, opts ...options.Lister[options.FindOneAndUpdateOptions]) (*LastRun, error) {
 	var model LastRun
-	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+	defaultOpts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+	combinedOpts := append([]options.Lister[options.FindOneAndUpdateOptions]{defaultOpts}, opts...)
 
-	err := r.collection.FindOneAndUpdate(ctx, filter, update, opts).Decode(&model)
+	err := r.collection.FindOneAndUpdate(ctx, filter, update, combinedOpts...).Decode(&model)
 	if err != nil {
 		return nil, err
 	}
@@ -132,9 +132,17 @@ func (r *LastRunRepository) FindOneAndDelete(ctx context.Context, filter bson.M,
 
 // Upsert updates a document if it exists, or creates it if it doesn't
 // update is the full update document, e.g., bson.M{"$set": fields} or bson.M{"$inc": ...}
-func (r *LastRunRepository) Upsert(ctx context.Context, id primitive.ObjectID, update bson.M) (*mongo.UpdateResult, error) {
-	opts := options.UpdateOne().SetUpsert(true)
-	return r.collection.UpdateOne(ctx, bson.M{"_id": id}, update, opts)
+func (r *LastRunRepository) Upsert(ctx context.Context, id bson.ObjectID, update bson.M, opts ...options.Lister[options.UpdateOneOptions]) (*mongo.UpdateResult, error) {
+	defaultOpts := options.UpdateOne().SetUpsert(true)
+	combinedOpts := append([]options.Lister[options.UpdateOneOptions]{defaultOpts}, opts...)
+	return r.collection.UpdateOne(ctx, bson.M{"_id": id}, update, combinedOpts...)
+}
+
+// UpsertOne upserts a single document matching the filter
+func (r *LastRunRepository) UpsertOne(ctx context.Context, filter bson.M, update bson.M, opts ...options.Lister[options.UpdateOneOptions]) (*mongo.UpdateResult, error) {
+	defaultOpts := options.UpdateOne().SetUpsert(true)
+	combinedOpts := append([]options.Lister[options.UpdateOneOptions]{defaultOpts}, opts...)
+	return r.collection.UpdateOne(ctx, filter, update, combinedOpts...)
 }
 
 // Count returns the number of documents matching a filter
@@ -148,6 +156,12 @@ func (r *LastRunRepository) Distinct(ctx context.Context, fieldName string, filt
 	return res, res.Err()
 }
 
+// Exists checks if a document exists by ID
+func (r *LastRunRepository) Exists(ctx context.Context, id bson.ObjectID) (bool, error) {
+	count, err := r.collection.CountDocuments(ctx, bson.M{"_id": id}, options.Count().SetLimit(1))
+	return count > 0, err
+}
+
 // BulkWrite performs multiple write operations in bulk
 func (r *LastRunRepository) BulkWrite(ctx context.Context, models []mongo.WriteModel, opts ...options.Lister[options.BulkWriteOptions]) (*mongo.BulkWriteResult, error) {
 	return r.collection.BulkWrite(ctx, models, opts...)
@@ -156,8 +170,8 @@ func (r *LastRunRepository) BulkWrite(ctx context.Context, models []mongo.WriteM
 // --- Search, Pagination & Aggregation ---
 
 // FindAll retrieves all documents matching a filter
-func (r *LastRunRepository) FindAll(ctx context.Context, filter bson.M) ([]*LastRun, error) {
-	cursor, err := r.collection.Find(ctx, filter)
+func (r *LastRunRepository) FindAll(ctx context.Context, filter bson.M, opts ...options.Lister[options.FindOptions]) ([]*LastRun, error) {
+	cursor, err := r.collection.Find(ctx, filter, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -170,8 +184,13 @@ func (r *LastRunRepository) FindAll(ctx context.Context, filter bson.M) ([]*Last
 	return results, nil
 }
 
+// Find returns a cursor for documents matching the filter
+func (r *LastRunRepository) Find(ctx context.Context, filter bson.M, opts ...options.Lister[options.FindOptions]) (*mongo.Cursor, error) {
+	return r.collection.Find(ctx, filter, opts...)
+}
+
 // FindPage retrieves a page of documents with sorting options
-func (r *LastRunRepository) FindPage(ctx context.Context, filter bson.M, page int64, limit int64, sort interface{}) ([]*LastRun, int64, error) {
+func (r *LastRunRepository) FindPage(ctx context.Context, filter bson.M, page int64, limit int64, sort bson.D, opts ...options.Lister[options.FindOptions]) ([]*LastRun, int64, error) {
 	skip := (page - 1) * limit
 	if skip < 0 {
 		skip = 0
@@ -182,8 +201,10 @@ func (r *LastRunRepository) FindPage(ctx context.Context, filter bson.M, page in
 		return nil, 0, err
 	}
 
-	opts := options.Find().SetLimit(limit).SetSkip(skip).SetSort(sort)
-	cursor, err := r.collection.Find(ctx, filter, opts)
+	defaultOpts := options.Find().SetLimit(limit).SetSkip(skip).SetSort(sort)
+	combinedOpts := append([]options.Lister[options.FindOptions]{defaultOpts}, opts...)
+
+	cursor, err := r.collection.Find(ctx, filter, combinedOpts...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -206,4 +227,9 @@ func (r *LastRunRepository) Aggregate(ctx context.Context, pipeline mongo.Pipeli
 // Watch creates a change stream to listen for real-time updates on this collection
 func (r *LastRunRepository) Watch(ctx context.Context, pipeline mongo.Pipeline) (*mongo.ChangeStream, error) {
 	return r.collection.Watch(ctx, pipeline)
+}
+
+// Collection returns the underlying mongo collection for advanced operations
+func (r *LastRunRepository) Collection() *mongo.Collection {
+	return r.collection
 }

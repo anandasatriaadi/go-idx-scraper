@@ -4,7 +4,6 @@ package model
 import (
 	"context"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -25,8 +24,8 @@ func NewNewsRepository(db *mongo.Database) *NewsRepository {
 // --- Basic CRUD ---
 
 // Create inserts a single News
-func (r *NewsRepository) Create(ctx context.Context, model *News) (*mongo.InsertOneResult, error) {
-	return r.collection.InsertOne(ctx, model)
+func (r *NewsRepository) Create(ctx context.Context, model *News, opts ...options.Lister[options.InsertOneOptions]) (*mongo.InsertOneResult, error) {
+	return r.collection.InsertOne(ctx, model, opts...)
 }
 
 // CreateMany inserts multiple News documents
@@ -35,7 +34,7 @@ func (r *NewsRepository) CreateMany(ctx context.Context, models []*News, opts ..
 }
 
 // FindByID retrieves a document by its _id
-func (r *NewsRepository) FindByID(ctx context.Context, id primitive.ObjectID) (*News, error) {
+func (r *NewsRepository) FindByID(ctx context.Context, id bson.ObjectID) (*News, error) {
 	var model News
 	err := r.collection.FindOne(ctx, bson.M{"_id": id}).Decode(&model)
 	if err != nil {
@@ -45,9 +44,9 @@ func (r *NewsRepository) FindByID(ctx context.Context, id primitive.ObjectID) (*
 }
 
 // FindOne retrieves a single document matching the filter
-func (r *NewsRepository) FindOne(ctx context.Context, filter bson.M) (*News, error) {
+func (r *NewsRepository) FindOne(ctx context.Context, filter bson.M, opts ...options.Lister[options.FindOneOptions]) (*News, error) {
 	var model News
-	err := r.collection.FindOne(ctx, filter).Decode(&model)
+	err := r.collection.FindOne(ctx, filter, opts...).Decode(&model)
 	if err != nil {
 		return nil, err
 	}
@@ -55,8 +54,8 @@ func (r *NewsRepository) FindOne(ctx context.Context, filter bson.M) (*News, err
 }
 
 // UpdateByID updates a document by ID using the full update bson map (e.g., bson.M{"$set": fields} or bson.M{"$inc": ...})
-func (r *NewsRepository) UpdateByID(ctx context.Context, id primitive.ObjectID, update bson.M) (*mongo.UpdateResult, error) {
-	return r.collection.UpdateOne(ctx, bson.M{"_id": id}, update)
+func (r *NewsRepository) UpdateByID(ctx context.Context, id bson.ObjectID, update bson.M, opts ...options.Lister[options.UpdateOneOptions]) (*mongo.UpdateResult, error) {
+	return r.collection.UpdateOne(ctx, bson.M{"_id": id}, update, opts...)
 }
 
 // UpdateOne updates a single document matching the filter using the full update bson map
@@ -75,8 +74,8 @@ func (r *NewsRepository) ReplaceOne(ctx context.Context, filter bson.M, replacem
 }
 
 // DeleteByID removes a document by ID
-func (r *NewsRepository) DeleteByID(ctx context.Context, id primitive.ObjectID) (*mongo.DeleteResult, error) {
-	return r.collection.DeleteOne(ctx, bson.M{"_id": id})
+func (r *NewsRepository) DeleteByID(ctx context.Context, id bson.ObjectID, opts ...options.Lister[options.DeleteOneOptions]) (*mongo.DeleteResult, error) {
+	return r.collection.DeleteOne(ctx, bson.M{"_id": id}, opts...)
 }
 
 // DeleteOne removes a single document matching the filter
@@ -94,11 +93,12 @@ func (r *NewsRepository) DeleteMany(ctx context.Context, filter bson.M, opts ...
 // FindOneAndUpdate performs an atomic find and update operation
 // Returns the *updated* document (ReturnDocument: After)
 // update is the full update document, e.g., bson.M{"$set": fields} or bson.M{"$inc": ...}
-func (r *NewsRepository) FindOneAndUpdate(ctx context.Context, filter bson.M, update bson.M) (*News, error) {
+func (r *NewsRepository) FindOneAndUpdate(ctx context.Context, filter bson.M, update bson.M, opts ...options.Lister[options.FindOneAndUpdateOptions]) (*News, error) {
 	var model News
-	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+	defaultOpts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+	combinedOpts := append([]options.Lister[options.FindOneAndUpdateOptions]{defaultOpts}, opts...)
 
-	err := r.collection.FindOneAndUpdate(ctx, filter, update, opts).Decode(&model)
+	err := r.collection.FindOneAndUpdate(ctx, filter, update, combinedOpts...).Decode(&model)
 	if err != nil {
 		return nil, err
 	}
@@ -132,9 +132,17 @@ func (r *NewsRepository) FindOneAndDelete(ctx context.Context, filter bson.M, op
 
 // Upsert updates a document if it exists, or creates it if it doesn't
 // update is the full update document, e.g., bson.M{"$set": fields} or bson.M{"$inc": ...}
-func (r *NewsRepository) Upsert(ctx context.Context, id primitive.ObjectID, update bson.M) (*mongo.UpdateResult, error) {
-	opts := options.UpdateOne().SetUpsert(true)
-	return r.collection.UpdateOne(ctx, bson.M{"_id": id}, update, opts)
+func (r *NewsRepository) Upsert(ctx context.Context, id bson.ObjectID, update bson.M, opts ...options.Lister[options.UpdateOneOptions]) (*mongo.UpdateResult, error) {
+	defaultOpts := options.UpdateOne().SetUpsert(true)
+	combinedOpts := append([]options.Lister[options.UpdateOneOptions]{defaultOpts}, opts...)
+	return r.collection.UpdateOne(ctx, bson.M{"_id": id}, update, combinedOpts...)
+}
+
+// UpsertOne upserts a single document matching the filter
+func (r *NewsRepository) UpsertOne(ctx context.Context, filter bson.M, update bson.M, opts ...options.Lister[options.UpdateOneOptions]) (*mongo.UpdateResult, error) {
+	defaultOpts := options.UpdateOne().SetUpsert(true)
+	combinedOpts := append([]options.Lister[options.UpdateOneOptions]{defaultOpts}, opts...)
+	return r.collection.UpdateOne(ctx, filter, update, combinedOpts...)
 }
 
 // Count returns the number of documents matching a filter
@@ -148,6 +156,12 @@ func (r *NewsRepository) Distinct(ctx context.Context, fieldName string, filter 
 	return res, res.Err()
 }
 
+// Exists checks if a document exists by ID
+func (r *NewsRepository) Exists(ctx context.Context, id bson.ObjectID) (bool, error) {
+	count, err := r.collection.CountDocuments(ctx, bson.M{"_id": id}, options.Count().SetLimit(1))
+	return count > 0, err
+}
+
 // BulkWrite performs multiple write operations in bulk
 func (r *NewsRepository) BulkWrite(ctx context.Context, models []mongo.WriteModel, opts ...options.Lister[options.BulkWriteOptions]) (*mongo.BulkWriteResult, error) {
 	return r.collection.BulkWrite(ctx, models, opts...)
@@ -156,8 +170,8 @@ func (r *NewsRepository) BulkWrite(ctx context.Context, models []mongo.WriteMode
 // --- Search, Pagination & Aggregation ---
 
 // FindAll retrieves all documents matching a filter
-func (r *NewsRepository) FindAll(ctx context.Context, filter bson.M) ([]*News, error) {
-	cursor, err := r.collection.Find(ctx, filter)
+func (r *NewsRepository) FindAll(ctx context.Context, filter bson.M, opts ...options.Lister[options.FindOptions]) ([]*News, error) {
+	cursor, err := r.collection.Find(ctx, filter, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -170,8 +184,13 @@ func (r *NewsRepository) FindAll(ctx context.Context, filter bson.M) ([]*News, e
 	return results, nil
 }
 
+// Find returns a cursor for documents matching the filter
+func (r *NewsRepository) Find(ctx context.Context, filter bson.M, opts ...options.Lister[options.FindOptions]) (*mongo.Cursor, error) {
+	return r.collection.Find(ctx, filter, opts...)
+}
+
 // FindPage retrieves a page of documents with sorting options
-func (r *NewsRepository) FindPage(ctx context.Context, filter bson.M, page int64, limit int64, sort interface{}) ([]*News, int64, error) {
+func (r *NewsRepository) FindPage(ctx context.Context, filter bson.M, page int64, limit int64, sort bson.D, opts ...options.Lister[options.FindOptions]) ([]*News, int64, error) {
 	skip := (page - 1) * limit
 	if skip < 0 {
 		skip = 0
@@ -182,8 +201,10 @@ func (r *NewsRepository) FindPage(ctx context.Context, filter bson.M, page int64
 		return nil, 0, err
 	}
 
-	opts := options.Find().SetLimit(limit).SetSkip(skip).SetSort(sort)
-	cursor, err := r.collection.Find(ctx, filter, opts)
+	defaultOpts := options.Find().SetLimit(limit).SetSkip(skip).SetSort(sort)
+	combinedOpts := append([]options.Lister[options.FindOptions]{defaultOpts}, opts...)
+
+	cursor, err := r.collection.Find(ctx, filter, combinedOpts...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -206,4 +227,9 @@ func (r *NewsRepository) Aggregate(ctx context.Context, pipeline mongo.Pipeline)
 // Watch creates a change stream to listen for real-time updates on this collection
 func (r *NewsRepository) Watch(ctx context.Context, pipeline mongo.Pipeline) (*mongo.ChangeStream, error) {
 	return r.collection.Watch(ctx, pipeline)
+}
+
+// Collection returns the underlying mongo collection for advanced operations
+func (r *NewsRepository) Collection() *mongo.Collection {
+	return r.collection
 }

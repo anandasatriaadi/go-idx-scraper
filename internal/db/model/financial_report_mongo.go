@@ -9,33 +9,33 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-// AnnouncementRepository defines strict repository methods
-type AnnouncementRepository struct {
+// FinancialReportRepository defines strict repository methods
+type FinancialReportRepository struct {
 	collection *mongo.Collection
 }
 
-// NewAnnouncementRepository creates a new repository instance
-func NewAnnouncementRepository(db *mongo.Database) *AnnouncementRepository {
-	return &AnnouncementRepository{
-		collection: db.Collection("announcements"),
+// NewFinancialReportRepository creates a new repository instance
+func NewFinancialReportRepository(db *mongo.Database) *FinancialReportRepository {
+	return &FinancialReportRepository{
+		collection: db.Collection("financial_reports"),
 	}
 }
 
 // --- Basic CRUD ---
 
-// Create inserts a single Announcement
-func (r *AnnouncementRepository) Create(ctx context.Context, model *Announcement, opts ...options.Lister[options.InsertOneOptions]) (*mongo.InsertOneResult, error) {
+// Create inserts a single FinancialReport
+func (r *FinancialReportRepository) Create(ctx context.Context, model *FinancialReport, opts ...options.Lister[options.InsertOneOptions]) (*mongo.InsertOneResult, error) {
 	return r.collection.InsertOne(ctx, model, opts...)
 }
 
-// CreateMany inserts multiple Announcement documents
-func (r *AnnouncementRepository) CreateMany(ctx context.Context, models []*Announcement, opts ...options.Lister[options.InsertManyOptions]) (*mongo.InsertManyResult, error) {
+// CreateMany inserts multiple FinancialReport documents
+func (r *FinancialReportRepository) CreateMany(ctx context.Context, models []*FinancialReport, opts ...options.Lister[options.InsertManyOptions]) (*mongo.InsertManyResult, error) {
 	return r.collection.InsertMany(ctx, models, opts...)
 }
 
 // FindByID retrieves a document by its _id
-func (r *AnnouncementRepository) FindByID(ctx context.Context, id bson.ObjectID) (*Announcement, error) {
-	var model Announcement
+func (r *FinancialReportRepository) FindByID(ctx context.Context, id bson.ObjectID) (*FinancialReport, error) {
+	var model FinancialReport
 	err := r.collection.FindOne(ctx, bson.M{"_id": id}).Decode(&model)
 	if err != nil {
 		return nil, err
@@ -44,8 +44,8 @@ func (r *AnnouncementRepository) FindByID(ctx context.Context, id bson.ObjectID)
 }
 
 // FindOne retrieves a single document matching the filter
-func (r *AnnouncementRepository) FindOne(ctx context.Context, filter bson.M, opts ...options.Lister[options.FindOneOptions]) (*Announcement, error) {
-	var model Announcement
+func (r *FinancialReportRepository) FindOne(ctx context.Context, filter bson.M, opts ...options.Lister[options.FindOneOptions]) (*FinancialReport, error) {
+	var model FinancialReport
 	err := r.collection.FindOne(ctx, filter, opts...).Decode(&model)
 	if err != nil {
 		return nil, err
@@ -54,37 +54,37 @@ func (r *AnnouncementRepository) FindOne(ctx context.Context, filter bson.M, opt
 }
 
 // UpdateByID updates a document by ID using the full update bson map (e.g., bson.M{"$set": fields} or bson.M{"$inc": ...})
-func (r *AnnouncementRepository) UpdateByID(ctx context.Context, id bson.ObjectID, update bson.M, opts ...options.Lister[options.UpdateOneOptions]) (*mongo.UpdateResult, error) {
+func (r *FinancialReportRepository) UpdateByID(ctx context.Context, id bson.ObjectID, update bson.M, opts ...options.Lister[options.UpdateOneOptions]) (*mongo.UpdateResult, error) {
 	return r.collection.UpdateOne(ctx, bson.M{"_id": id}, update, opts...)
 }
 
 // UpdateOne updates a single document matching the filter using the full update bson map
-func (r *AnnouncementRepository) UpdateOne(ctx context.Context, filter bson.M, update bson.M, opts ...options.Lister[options.UpdateOneOptions]) (*mongo.UpdateResult, error) {
+func (r *FinancialReportRepository) UpdateOne(ctx context.Context, filter bson.M, update bson.M, opts ...options.Lister[options.UpdateOneOptions]) (*mongo.UpdateResult, error) {
 	return r.collection.UpdateOne(ctx, filter, update, opts...)
 }
 
 // UpdateMany updates multiple documents matching the filter using the full update bson map
-func (r *AnnouncementRepository) UpdateMany(ctx context.Context, filter bson.M, update bson.M, opts ...options.Lister[options.UpdateManyOptions]) (*mongo.UpdateResult, error) {
+func (r *FinancialReportRepository) UpdateMany(ctx context.Context, filter bson.M, update bson.M, opts ...options.Lister[options.UpdateManyOptions]) (*mongo.UpdateResult, error) {
 	return r.collection.UpdateMany(ctx, filter, update, opts...)
 }
 
 // ReplaceOne replaces a single document matching the filter with the provided replacement
-func (r *AnnouncementRepository) ReplaceOne(ctx context.Context, filter bson.M, replacement *Announcement, opts ...options.Lister[options.ReplaceOptions]) (*mongo.UpdateResult, error) {
+func (r *FinancialReportRepository) ReplaceOne(ctx context.Context, filter bson.M, replacement *FinancialReport, opts ...options.Lister[options.ReplaceOptions]) (*mongo.UpdateResult, error) {
 	return r.collection.ReplaceOne(ctx, filter, replacement, opts...)
 }
 
 // DeleteByID removes a document by ID
-func (r *AnnouncementRepository) DeleteByID(ctx context.Context, id bson.ObjectID, opts ...options.Lister[options.DeleteOneOptions]) (*mongo.DeleteResult, error) {
+func (r *FinancialReportRepository) DeleteByID(ctx context.Context, id bson.ObjectID, opts ...options.Lister[options.DeleteOneOptions]) (*mongo.DeleteResult, error) {
 	return r.collection.DeleteOne(ctx, bson.M{"_id": id}, opts...)
 }
 
 // DeleteOne removes a single document matching the filter
-func (r *AnnouncementRepository) DeleteOne(ctx context.Context, filter bson.M, opts ...options.Lister[options.DeleteOneOptions]) (*mongo.DeleteResult, error) {
+func (r *FinancialReportRepository) DeleteOne(ctx context.Context, filter bson.M, opts ...options.Lister[options.DeleteOneOptions]) (*mongo.DeleteResult, error) {
 	return r.collection.DeleteOne(ctx, filter, opts...)
 }
 
 // DeleteMany removes documents matching the filter
-func (r *AnnouncementRepository) DeleteMany(ctx context.Context, filter bson.M, opts ...options.Lister[options.DeleteManyOptions]) (*mongo.DeleteResult, error) {
+func (r *FinancialReportRepository) DeleteMany(ctx context.Context, filter bson.M, opts ...options.Lister[options.DeleteManyOptions]) (*mongo.DeleteResult, error) {
 	return r.collection.DeleteMany(ctx, filter, opts...)
 }
 
@@ -93,8 +93,8 @@ func (r *AnnouncementRepository) DeleteMany(ctx context.Context, filter bson.M, 
 // FindOneAndUpdate performs an atomic find and update operation
 // Returns the *updated* document (ReturnDocument: After)
 // update is the full update document, e.g., bson.M{"$set": fields} or bson.M{"$inc": ...}
-func (r *AnnouncementRepository) FindOneAndUpdate(ctx context.Context, filter bson.M, update bson.M, opts ...options.Lister[options.FindOneAndUpdateOptions]) (*Announcement, error) {
-	var model Announcement
+func (r *FinancialReportRepository) FindOneAndUpdate(ctx context.Context, filter bson.M, update bson.M, opts ...options.Lister[options.FindOneAndUpdateOptions]) (*FinancialReport, error) {
+	var model FinancialReport
 	defaultOpts := options.FindOneAndUpdate().SetReturnDocument(options.After)
 	combinedOpts := append([]options.Lister[options.FindOneAndUpdateOptions]{defaultOpts}, opts...)
 
@@ -107,8 +107,8 @@ func (r *AnnouncementRepository) FindOneAndUpdate(ctx context.Context, filter bs
 
 // FindOneAndReplace performs an atomic find and replace operation
 // Returns the *replaced* document (ReturnDocument: Before)
-func (r *AnnouncementRepository) FindOneAndReplace(ctx context.Context, filter bson.M, replacement *Announcement, opts ...options.Lister[options.FindOneAndReplaceOptions]) (*Announcement, error) {
-	var model Announcement
+func (r *FinancialReportRepository) FindOneAndReplace(ctx context.Context, filter bson.M, replacement *FinancialReport, opts ...options.Lister[options.FindOneAndReplaceOptions]) (*FinancialReport, error) {
+	var model FinancialReport
 	defaultOpts := options.FindOneAndReplace().SetReturnDocument(options.Before)
 	combinedOpts := append([]options.Lister[options.FindOneAndReplaceOptions]{defaultOpts}, opts...)
 
@@ -121,8 +121,8 @@ func (r *AnnouncementRepository) FindOneAndReplace(ctx context.Context, filter b
 
 // FindOneAndDelete performs an atomic find and delete operation
 // Returns the *deleted* document
-func (r *AnnouncementRepository) FindOneAndDelete(ctx context.Context, filter bson.M, opts ...options.Lister[options.FindOneAndDeleteOptions]) (*Announcement, error) {
-	var model Announcement
+func (r *FinancialReportRepository) FindOneAndDelete(ctx context.Context, filter bson.M, opts ...options.Lister[options.FindOneAndDeleteOptions]) (*FinancialReport, error) {
+	var model FinancialReport
 	err := r.collection.FindOneAndDelete(ctx, filter, opts...).Decode(&model)
 	if err != nil {
 		return nil, err
@@ -132,52 +132,52 @@ func (r *AnnouncementRepository) FindOneAndDelete(ctx context.Context, filter bs
 
 // Upsert updates a document if it exists, or creates it if it doesn't
 // update is the full update document, e.g., bson.M{"$set": fields} or bson.M{"$inc": ...}
-func (r *AnnouncementRepository) Upsert(ctx context.Context, id bson.ObjectID, update bson.M, opts ...options.Lister[options.UpdateOneOptions]) (*mongo.UpdateResult, error) {
+func (r *FinancialReportRepository) Upsert(ctx context.Context, id bson.ObjectID, update bson.M, opts ...options.Lister[options.UpdateOneOptions]) (*mongo.UpdateResult, error) {
 	defaultOpts := options.UpdateOne().SetUpsert(true)
 	combinedOpts := append([]options.Lister[options.UpdateOneOptions]{defaultOpts}, opts...)
 	return r.collection.UpdateOne(ctx, bson.M{"_id": id}, update, combinedOpts...)
 }
 
 // UpsertOne upserts a single document matching the filter
-func (r *AnnouncementRepository) UpsertOne(ctx context.Context, filter bson.M, update bson.M, opts ...options.Lister[options.UpdateOneOptions]) (*mongo.UpdateResult, error) {
+func (r *FinancialReportRepository) UpsertOne(ctx context.Context, filter bson.M, update bson.M, opts ...options.Lister[options.UpdateOneOptions]) (*mongo.UpdateResult, error) {
 	defaultOpts := options.UpdateOne().SetUpsert(true)
 	combinedOpts := append([]options.Lister[options.UpdateOneOptions]{defaultOpts}, opts...)
 	return r.collection.UpdateOne(ctx, filter, update, combinedOpts...)
 }
 
 // Count returns the number of documents matching a filter
-func (r *AnnouncementRepository) Count(ctx context.Context, filter bson.M) (int64, error) {
+func (r *FinancialReportRepository) Count(ctx context.Context, filter bson.M) (int64, error) {
 	return r.collection.CountDocuments(ctx, filter)
 }
 
 // Distinct finds unique values for a specified field
-func (r *AnnouncementRepository) Distinct(ctx context.Context, fieldName string, filter bson.M) (*mongo.DistinctResult, error) {
+func (r *FinancialReportRepository) Distinct(ctx context.Context, fieldName string, filter bson.M) (*mongo.DistinctResult, error) {
 	res := r.collection.Distinct(ctx, fieldName, filter)
 	return res, res.Err()
 }
 
 // Exists checks if a document exists by ID
-func (r *AnnouncementRepository) Exists(ctx context.Context, id bson.ObjectID) (bool, error) {
+func (r *FinancialReportRepository) Exists(ctx context.Context, id bson.ObjectID) (bool, error) {
 	count, err := r.collection.CountDocuments(ctx, bson.M{"_id": id}, options.Count().SetLimit(1))
 	return count > 0, err
 }
 
 // BulkWrite performs multiple write operations in bulk
-func (r *AnnouncementRepository) BulkWrite(ctx context.Context, models []mongo.WriteModel, opts ...options.Lister[options.BulkWriteOptions]) (*mongo.BulkWriteResult, error) {
+func (r *FinancialReportRepository) BulkWrite(ctx context.Context, models []mongo.WriteModel, opts ...options.Lister[options.BulkWriteOptions]) (*mongo.BulkWriteResult, error) {
 	return r.collection.BulkWrite(ctx, models, opts...)
 }
 
 // --- Search, Pagination & Aggregation ---
 
 // FindAll retrieves all documents matching a filter
-func (r *AnnouncementRepository) FindAll(ctx context.Context, filter bson.M, opts ...options.Lister[options.FindOptions]) ([]*Announcement, error) {
+func (r *FinancialReportRepository) FindAll(ctx context.Context, filter bson.M, opts ...options.Lister[options.FindOptions]) ([]*FinancialReport, error) {
 	cursor, err := r.collection.Find(ctx, filter, opts...)
 	if err != nil {
 		return nil, err
 	}
 	defer cursor.Close(ctx)
 
-	var results []*Announcement
+	var results []*FinancialReport
 	if err = cursor.All(ctx, &results); err != nil {
 		return nil, err
 	}
@@ -185,12 +185,12 @@ func (r *AnnouncementRepository) FindAll(ctx context.Context, filter bson.M, opt
 }
 
 // Find returns a cursor for documents matching the filter
-func (r *AnnouncementRepository) Find(ctx context.Context, filter bson.M, opts ...options.Lister[options.FindOptions]) (*mongo.Cursor, error) {
+func (r *FinancialReportRepository) Find(ctx context.Context, filter bson.M, opts ...options.Lister[options.FindOptions]) (*mongo.Cursor, error) {
 	return r.collection.Find(ctx, filter, opts...)
 }
 
 // FindPage retrieves a page of documents with sorting options
-func (r *AnnouncementRepository) FindPage(ctx context.Context, filter bson.M, page int64, limit int64, sort bson.D, opts ...options.Lister[options.FindOptions]) ([]*Announcement, int64, error) {
+func (r *FinancialReportRepository) FindPage(ctx context.Context, filter bson.M, page int64, limit int64, sort bson.D, opts ...options.Lister[options.FindOptions]) ([]*FinancialReport, int64, error) {
 	skip := (page - 1) * limit
 	if skip < 0 {
 		skip = 0
@@ -210,7 +210,7 @@ func (r *AnnouncementRepository) FindPage(ctx context.Context, filter bson.M, pa
 	}
 	defer cursor.Close(ctx)
 
-	var results []*Announcement
+	var results []*FinancialReport
 	if err = cursor.All(ctx, &results); err != nil {
 		return nil, 0, err
 	}
@@ -218,18 +218,18 @@ func (r *AnnouncementRepository) FindPage(ctx context.Context, filter bson.M, pa
 }
 
 // Aggregate runs a raw aggregation pipeline
-// Note: This returns a cursor because aggregation results usually do not match the Announcement structure.
+// Note: This returns a cursor because aggregation results usually do not match the FinancialReport structure.
 // You must decode the cursor into your specific result struct.
-func (r *AnnouncementRepository) Aggregate(ctx context.Context, pipeline mongo.Pipeline) (*mongo.Cursor, error) {
+func (r *FinancialReportRepository) Aggregate(ctx context.Context, pipeline mongo.Pipeline) (*mongo.Cursor, error) {
 	return r.collection.Aggregate(ctx, pipeline)
 }
 
 // Watch creates a change stream to listen for real-time updates on this collection
-func (r *AnnouncementRepository) Watch(ctx context.Context, pipeline mongo.Pipeline) (*mongo.ChangeStream, error) {
+func (r *FinancialReportRepository) Watch(ctx context.Context, pipeline mongo.Pipeline) (*mongo.ChangeStream, error) {
 	return r.collection.Watch(ctx, pipeline)
 }
 
 // Collection returns the underlying mongo collection for advanced operations
-func (r *AnnouncementRepository) Collection() *mongo.Collection {
+func (r *FinancialReportRepository) Collection() *mongo.Collection {
 	return r.collection
 }

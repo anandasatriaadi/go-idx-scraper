@@ -17,3 +17,5 @@ download:
   year: 2023
   mode: TW
   month_period: 3
+
+openrouter_api_key: your_api_key_here

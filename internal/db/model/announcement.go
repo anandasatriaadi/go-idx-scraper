@@ -10,7 +10,7 @@ import (
 // Announcement represents the main document to be saved in MongoDB.
 // It includes embedded Attachments.
 //
-//go:generate mongogen -type=Announcement -collection=announcements
+//go:generate go run ../../../generator/mongogen/main.go -type=Announcement -collection=announcements
 type Announcement struct {
 	ID                string             `json:"id" bson:"_id,omitempty"`
 	EfekEmitenDire    *bool              `json:"efek_emiten_dire" bson:"efek_emiten_dire"`
