@@ -38,7 +38,7 @@ func (r *NewsRepository) FindByID(ctx context.Context, id bson.ObjectID) (*news.
 }
 
 // FindAll retrieves all documents matching a filter
-func (r *NewsRepository) FindAll(ctx context.Context, filter interface{}, opts ...options.Lister[options.FindOptions]) ([]*news.News, error) {
+func (r *NewsRepository) FindAll(ctx context.Context, filter any, opts ...options.Lister[options.FindOptions]) ([]*news.News, error) {
 	cursor, err := r.collection.Find(ctx, filter, opts...)
 	if err != nil {
 		return nil, err
@@ -53,7 +53,7 @@ func (r *NewsRepository) FindAll(ctx context.Context, filter interface{}, opts .
 }
 
 // UpdateByID updates a document by ID
-func (r *NewsRepository) UpdateByID(ctx context.Context, id bson.ObjectID, update interface{}) error {
+func (r *NewsRepository) UpdateByID(ctx context.Context, id bson.ObjectID, update any) error {
 	_, err := r.collection.UpdateOne(ctx, bson.M{"_id": id}, update)
 	return err
 }

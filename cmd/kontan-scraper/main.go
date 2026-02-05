@@ -10,7 +10,6 @@ import (
 	newsApp "github.com/anandasatriaadi/go-idx-scraper/internal/application/news"
 	br "github.com/anandasatriaadi/go-idx-scraper/internal/browser"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
-	"github.com/anandasatriaadi/go-idx-scraper/internal/db"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/news"
 	newsRepo "github.com/anandasatriaadi/go-idx-scraper/internal/infrastructure/persistence/mongo"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infrastructure/scraper/kontan"
@@ -33,13 +32,13 @@ func main() {
 
 	// Connect to MongoDB
 	ctx := context.Background()
-	dbClient, err := db.New(logger)
+	dbClient, err := newsRepo.NewClient(logger)
 	if err != nil {
 		logger.Fatal("Failed to connect to MongoDB", zap.Error(err))
 	}
 
 	// Infrastructure: Repositories
-	repo := newsRepo.NewNewsRepository(dbClient.GetDatabase("idx"))
+	repo := newsRepo.NewNewsRepository(dbClient.Database("idx"))
 
 	// Application: Services
 	service := newsApp.NewService(repo, logger, cfg)

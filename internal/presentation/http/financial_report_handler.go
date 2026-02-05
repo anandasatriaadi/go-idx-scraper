@@ -1,19 +1,19 @@
-package http
+package handlers
 
 import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/anandasatriaadi/go-idx-scraper/internal/application/financialreport"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/finreport"
 	"github.com/go-chi/chi/v5"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 type FinancialReportHandler struct {
-	service *financialreport.Service
+	service *finreport.Service
 }
 
-func NewFinancialReportHandler(service *financialreport.Service) *FinancialReportHandler {
+func NewFinancialReportHandler(service *finreport.Service) *FinancialReportHandler {
 	return &FinancialReportHandler{service: service}
 }
 

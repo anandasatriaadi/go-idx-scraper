@@ -24,7 +24,7 @@ func (r *AnnouncementRepository) Create(ctx context.Context, model *announcement
 	return err
 }
 
-func (r *AnnouncementRepository) FindAll(ctx context.Context, filter interface{}, opts ...options.Lister[options.FindOptions]) ([]*announcement.Announcement, error) {
+func (r *AnnouncementRepository) FindAll(ctx context.Context, filter any, opts ...options.Lister[options.FindOptions]) ([]*announcement.Announcement, error) {
 	cursor, err := r.collection.Find(ctx, filter, opts...)
 	if err != nil {
 		return nil, err

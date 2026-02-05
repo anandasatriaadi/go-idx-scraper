@@ -12,6 +12,7 @@ mailing:
 
 database:
   uri: mongodb://localhost:27017
+  db_name: yourdbname
 
 download:
   year: 2023

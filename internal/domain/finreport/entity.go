@@ -1,4 +1,4 @@
-package financialreport
+package finreport
 
 import (
 	"context"
@@ -16,6 +16,6 @@ type FinancialReport struct {
 
 type Repository interface {
 	Create(ctx context.Context, report *FinancialReport) error
-	FindAll(ctx context.Context, filter interface{}, opts ...options.Lister[options.FindOptions]) ([]*FinancialReport, error)
+	FindAll(ctx context.Context, filter any, opts ...options.Lister[options.FindOptions]) ([]*FinancialReport, error)
 	// Add specific queries as needed
 }

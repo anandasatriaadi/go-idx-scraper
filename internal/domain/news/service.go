@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
-	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/news"
 	"github.com/revrost/go-openrouter"
 	"github.com/revrost/go-openrouter/jsonschema"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -14,12 +13,12 @@ import (
 )
 
 type Service struct {
-	repo   news.Repository
+	repo   Repository
 	logger *zap.Logger
 	cfg    *config.Config
 }
 
-func NewService(repo news.Repository, logger *zap.Logger, cfg *config.Config) *Service {
+func NewService(repo Repository, logger *zap.Logger, cfg *config.Config) *Service {
 	return &Service{
 		repo:   repo,
 		logger: logger,
@@ -27,15 +26,15 @@ func NewService(repo news.Repository, logger *zap.Logger, cfg *config.Config) *S
 	}
 }
 
-func (s *Service) Create(ctx context.Context, n *news.News) error {
+func (s *Service) Create(ctx context.Context, n *News) error {
 	return s.repo.Create(ctx, n)
 }
 
-func (s *Service) FindAll(ctx context.Context, filter interface{}) ([]*news.News, error) {
+func (s *Service) FindAll(ctx context.Context, filter any) ([]*News, error) {
 	return s.repo.FindAll(ctx, filter)
 }
 
-func (s *Service) FindByID(ctx context.Context, id bson.ObjectID) (*news.News, error) {
+func (s *Service) FindByID(ctx context.Context, id bson.ObjectID) (*News, error) {
 	return s.repo.FindByID(ctx, id)
 }
 
@@ -99,8 +98,8 @@ func (s *Service) Summarize(ctx context.Context, ids []bson.ObjectID) error {
 			s.logger.Info("Successfully summarized news", zap.String("id", id.Hex()), zap.String("title", summary.Title), zap.Int("priority", summary.Priority))
 
 			// Update the news document
-			update := map[string]interface{}{
-				"$set": map[string]interface{}{
+			update := map[string]any{
+				"$set": map[string]any{
 					"title":    summary.Title,
 					"summary":  summary.Summary,
 					"priority": summary.Priority,

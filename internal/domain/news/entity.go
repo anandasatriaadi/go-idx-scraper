@@ -20,7 +20,7 @@ type News struct {
 
 type Repository interface {
 	Create(ctx context.Context, news *News) error
-	FindAll(ctx context.Context, filter interface{}, opts ...options.Lister[options.FindOptions]) ([]*News, error)
+	FindAll(ctx context.Context, filter any, opts ...options.Lister[options.FindOptions]) ([]*News, error)
 	FindByID(ctx context.Context, id bson.ObjectID) (*News, error)
-	UpdateByID(ctx context.Context, id bson.ObjectID, update interface{}) error
+	UpdateByID(ctx context.Context, id bson.ObjectID, update any) error
 }

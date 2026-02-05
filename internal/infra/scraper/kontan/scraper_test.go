@@ -1,4 +1,4 @@
-package main
+package kontan
 
 import (
 	"strings"
@@ -42,7 +42,8 @@ func TestParseArticlesFromHTML(t *testing.T) {
 	`
 
 	logger := zap.NewNop()
-	articles := parseArticlesFromHTML(htmlContent, logger)
+	scraper := NewScraper(logger)
+	articles := scraper.parseArticlesFromHTML(htmlContent)
 
 	if len(articles) != 2 {
 		t.Errorf("Expected 2 articles, got %d", len(articles))
@@ -66,31 +67,12 @@ func TestParseArticlesFromHTML(t *testing.T) {
 	if articles[1].Title != "Local News Title" {
 		t.Errorf("Expected title 'Local News Title', got '%s'", articles[1].Title)
 	}
-	if articles[1].Link != "https://news/local-news" && articles[1].Link != "https:/news/local-news" {
-		// The original code does `link = "https:" + link` if it doesn't start with http.
-		// If href is "/news/local-news", "https:" + "/news/local-news" -> "https:/news/local-news"
-		// This might be a bug in the original code or expected behavior for that specific site structure.
-		// Let's check the implementation:
-		// link, _ := s.Find("h1 > a").Attr("href")
-		// if !strings.HasPrefix(link, "http") { link = "https:" + link }
-		// If link is "//investasi...", it becomes "https://investasi..."
-		// If link is "/news...", it becomes "https:/news..." (invalid URL usually).
-		// But let's assert what the code *currently* does.
-		if articles[1].Link != "https:/news/local-news" {
-			// actually it's likely intended for protocol relative URLs like //domain.com
-			// but if it's a relative path, it might be broken in the original code.
-			// I will accept what the code produces to lock in behavior.
-		}
-	}
-
-	// actually let's just check if it contains the path
+	// Check contains local-news
 	if !strings.Contains(articles[1].Link, "local-news") {
 		t.Errorf("Link should contain local-news")
 	}
 
 	if articles[1].Image != "https://foto.kontan.co.id/local-image.jpg" {
-		// Original code:
-		// if !strings.HasPrefix(image, "http") && image != "" { image = "https://foto.kontan.co.id" + image }
 		t.Errorf("Expected image to be prepended with base url, got '%s'", articles[1].Image)
 	}
 }
@@ -107,7 +89,8 @@ func TestFilterArticleContent(t *testing.T) {
 	`
 
 	logger := zap.NewNop()
-	filtered := filterArticleContent(htmlContent, logger)
+	processor := NewHTMLToMarkdownProcessor(logger)
+	filtered := processor.filterArticleContent(htmlContent)
 
 	if strings.Contains(filtered, "Baca Juga") {
 		t.Errorf("Content should not contain 'Baca Juga'")
@@ -130,7 +113,9 @@ func TestFilterArticleContent(t *testing.T) {
 
 func TestParseDate(t *testing.T) {
 	dateStr := "05 Februari 2024"
-	parsed, err := parseDate(dateStr)
+	logger := zap.NewNop()
+	scraper := NewScraper(logger)
+	parsed, err := scraper.parseDate(dateStr)
 	if err != nil {
 		t.Fatalf("Failed to parse date: %v", err)
 	}

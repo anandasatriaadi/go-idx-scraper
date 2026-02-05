@@ -208,7 +208,7 @@ func (s *Scraper) parseDate(dateStr string) (time.Time, error) {
 		"Desember":  "December",
 	}
 	for id, en := range monthMap {
-		dateStr = strings.Replace(dateStr, id, en, -1)
+		dateStr = strings.ReplaceAll(dateStr, id, en)
 	}
 	return time.Parse("02 January 2006", dateStr)
 }

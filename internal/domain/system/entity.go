@@ -16,6 +16,6 @@ type LastRun struct {
 }
 
 type Repository interface {
-	FindOne(ctx context.Context, filter interface{}, opts ...options.Lister[options.FindOneOptions]) (*LastRun, error)
-	UpdateOne(ctx context.Context, filter interface{}, update interface{}, opts ...options.Lister[options.UpdateOneOptions]) error
+	FindOne(ctx context.Context, filter any, opts ...options.Lister[options.FindOneOptions]) (*LastRun, error)
+	UpdateOne(ctx context.Context, filter any, update any, opts ...options.Lister[options.UpdateOneOptions]) error
 }

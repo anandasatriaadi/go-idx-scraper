@@ -15,7 +15,6 @@ import (
 
 	"github.com/anandasatriaadi/go-idx-scraper/internal/browser"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
-	"github.com/anandasatriaadi/go-idx-scraper/internal/db"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/announcement"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infrastructure/idx"
@@ -103,14 +102,14 @@ func main() {
 		cancel()
 	}()
 
-	database, err := db.New(logger)
+	database, err := mongo.NewClient(logger)
 	if err != nil {
 		logger.Error("Failed to create database", zap.Error(err))
 		cancel()
 		os.Exit(1)
 	}
 
-	dbInstance := database.GetDatabase("idx")
+	dbInstance := database.Database("idx")
 	lRepo := mongo.NewSystemRepository(dbInstance)
 	aRepo := mongo.NewAnnouncementRepository(dbInstance)
 

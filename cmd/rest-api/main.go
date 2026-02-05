@@ -11,9 +11,8 @@ import (
 	financialreportApp "github.com/anandasatriaadi/go-idx-scraper/internal/application/financialreport"
 	newsApp "github.com/anandasatriaadi/go-idx-scraper/internal/application/news"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
-	"github.com/anandasatriaadi/go-idx-scraper/internal/db"
 	persistence "github.com/anandasatriaadi/go-idx-scraper/internal/infrastructure/persistence/mongo"
-	presentation "github.com/anandasatriaadi/go-idx-scraper/internal/presentation/http"
+	handlers "github.com/anandasatriaadi/go-idx-scraper/internal/presentation/http"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"go.uber.org/zap"
@@ -71,11 +70,11 @@ func main() {
 	}
 
 	// Initialize Database
-	dbClient, err := db.New(logger)
+	dbClient, err := persistence.NewClient(logger)
 	if err != nil {
 		log.Fatalf("Failed to connect to DB: %v", err)
 	}
-	database := dbClient.GetDatabase("idx")
+	database := dbClient.Database("idx")
 
 	// Infrastructure: Repositories
 	newsRepo := persistence.NewNewsRepository(database)
@@ -88,9 +87,9 @@ func main() {
 	financialService := financialreportApp.NewService(financialRepo, logger)
 
 	// Presentation: Handlers
-	newsHandler := presentation.NewNewsHandler(newsService)
-	announcementHandler := presentation.NewAnnouncementHandler(announcementService)
-	financialHandler := presentation.NewFinancialReportHandler(financialService)
+	newsHandler := handlers.NewNewsHandler(newsService)
+	announcementHandler := handlers.NewAnnouncementHandler(announcementService)
+	financialHandler := handlers.NewFinancialReportHandler(financialService)
 
 	// Set up Chi router
 	r := chi.NewRouter()

@@ -34,7 +34,8 @@ type DownloadConfig struct {
 
 // DatabaseConfig holds database settings.
 type DatabaseConfig struct {
-	URI string `mapstructure:"uri"`
+	URI    string `mapstructure:"uri"`
+	DbName string `mapstructure:"db_name"`
 }
 
 // Config holds configuration settings.

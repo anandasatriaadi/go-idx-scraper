@@ -1,4 +1,4 @@
-package http
+package handlers
 
 import (
 	"encoding/json"
@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/anandasatriaadi/go-idx-scraper/internal/application/news"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/news"
 	"github.com/go-chi/chi/v5"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )

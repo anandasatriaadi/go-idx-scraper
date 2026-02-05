@@ -10,8 +10,8 @@ import (
 
 	"github.com/anandasatriaadi/go-idx-scraper/internal/browser"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/stock"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
-	"github.com/anandasatriaadi/go-idx-scraper/internal/types"
 	"github.com/chromedp/chromedp"
 	"go.uber.org/zap"
 )
@@ -82,7 +82,7 @@ func main() {
 	logger.Info("Issuer list updated", zap.Int("total", len(currIssuerList)))
 }
 
-func fetchStocks(ctx context.Context) ([]types.StockData, error) {
+func fetchStocks(ctx context.Context) ([]stock.StockData, error) {
 	url := fmt.Sprintf("https://www.idx.co.id/primary/TradingSummary/GetStockSummary?length=9999&start=0&date=%s", time.Now().AddDate(0, 0, -1).Format("20060102"))
 
 	var data string
@@ -90,7 +90,7 @@ func fetchStocks(ctx context.Context) ([]types.StockData, error) {
 	if err != nil {
 		return nil, fmt.Errorf("running chromedp: %w", err)
 	}
-	var resp types.StockListResponse
+	var resp stock.StockListResponse
 	if err := json.Unmarshal([]byte(data), &resp); err != nil {
 		return nil, fmt.Errorf("unmarshaling response: %w", err)
 	}

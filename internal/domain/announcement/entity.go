@@ -8,6 +8,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
+//go:generate go run ../../../tools/mongo_repo/main.go -type=Announcement -collection=announcements
 type Announcement struct {
 	ID                string              `json:"id" bson:"_id,omitempty"`
 	EfekEmitenDire    *bool               `json:"efek_emiten_dire" bson:"efek_emiten_dire"`
@@ -28,7 +29,7 @@ type Announcement struct {
 
 type Repository interface {
 	Create(ctx context.Context, announcement *Announcement) error
-	FindAll(ctx context.Context, filter interface{}, opts ...options.Lister[options.FindOptions]) ([]*Announcement, error)
+	FindAll(ctx context.Context, filter any, opts ...options.Lister[options.FindOptions]) ([]*Announcement, error)
 	FindByID(ctx context.Context, id string) (*Announcement, error)
 	Exists(ctx context.Context, id string) (bool, error)
 }

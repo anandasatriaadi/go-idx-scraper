@@ -9,7 +9,6 @@ import (
 
 func SetupChromeDp(cfg *config.Config) (ctx context.Context, cancel context.CancelFunc) {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		// chromedp.Flag("headless", true), // Uncomment for headless mode
 		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
 		chromedp.Flag("disable-gpu", true),
