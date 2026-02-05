@@ -333,6 +333,7 @@ func (r *{{.StructName}}Repository) Collection() *mongo.Collection {
 func main() {
 	typePtr := flag.String("type", "", "The struct name to generate code for")
 	collectionPtr := flag.String("collection", "", "The mongodb collection name (optional, defaults to lowercase struct name)")
+	packagePtr := flag.String("package", "", "The package directory to generate code in (optional, defaults to current directory)")
 	flag.Parse()
 
 	if *typePtr == "" {
@@ -350,61 +351,53 @@ func main() {
 		log.Fatal("GOPACKAGE environment variable not set")
 	}
 
+	// go generate also sets GOFILE to the file name that contains the generate directive
+	goFile := os.Getenv("GOFILE")
+
 	col := *collectionPtr
 	if col == "" {
 		col = strings.ToLower(*typePtr) + "s"
 	}
 
-	// We need to parse the source files in the current directory to find the struct definition.
+	// Determine the target directory for generated code
+	targetDir := "."
+	if *packagePtr != "" {
+		targetDir = *packagePtr
+	}
+
+	// We need to parse the source file to find the struct definition.
 	// This allows us to inspect the struct fields and automatically handle fields like CreatedAt and UpdatedAt.
 	var createdAtField, updatedAtField string
-	fset := token.NewFileSet()
 
-	// ReadDir returns all entries in the directory. We will filter for .go files to parse.
-	entries, _ := os.ReadDir(".")
-
-	found := false
-	for _, entry := range entries {
-		if found {
-			break
-		}
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
-			continue
-		}
-		// Skip files ignored by build tool (starting with . or _) to match parser.ParseDir behavior
-		if strings.HasPrefix(entry.Name(), ".") || strings.HasPrefix(entry.Name(), "_") {
-			continue
-		}
-
-		f, err := parser.ParseFile(fset, entry.Name(), nil, 0)
-		if err != nil {
-			continue
-		}
-
-		// Traverse the AST to find the struct type specification matching the requested type name
-		ast.Inspect(f, func(n ast.Node) bool {
-			if t, ok := n.(*ast.TypeSpec); ok {
-				if t.Name.Name == *typePtr {
-					// Struct found, inspect fields
-					if st, ok := t.Type.(*ast.StructType); ok {
-						for _, field := range st.Fields.List {
-							for _, name := range field.Names {
-								lower := strings.ToLower(strings.ReplaceAll(name.Name, "_", ""))
-								if lower == "createdat" {
-									createdAtField = name.Name
-								}
-								if lower == "updatedat" {
-									updatedAtField = name.Name
+	// If GOFILE is set, we know exactly which file invoked go generate
+	if goFile != "" {
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, goFile, nil, 0)
+		if err == nil {
+			// Traverse the AST to find the struct type specification matching the requested type name
+			ast.Inspect(f, func(n ast.Node) bool {
+				if t, ok := n.(*ast.TypeSpec); ok {
+					if t.Name.Name == *typePtr {
+						// Struct found, inspect fields
+						if st, ok := t.Type.(*ast.StructType); ok {
+							for _, field := range st.Fields.List {
+								for _, name := range field.Names {
+									lower := strings.ToLower(strings.ReplaceAll(name.Name, "_", ""))
+									if lower == "createdat" {
+										createdAtField = name.Name
+									}
+									if lower == "updatedat" {
+										updatedAtField = name.Name
+									}
 								}
 							}
 						}
+						return false // Stop traversal
 					}
-					found = true
-					return false // Stop traversal
 				}
-			}
-			return true
-		})
+				return true
+			})
+		}
 	}
 
 	config := Config{
@@ -432,7 +425,7 @@ func main() {
 		log.Fatalf("formatting error: %s", err)
 	}
 
-	filename := fmt.Sprintf("%s_mongo.go", toSnakeCase(*typePtr))
+	filename := fmt.Sprintf("%s/%s_mongo.go", targetDir, toSnakeCase(*typePtr))
 	err = os.WriteFile(filename, formatted, 0644)
 	if err != nil {
 		log.Fatal(err)

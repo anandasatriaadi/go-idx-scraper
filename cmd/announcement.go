@@ -1,25 +1,25 @@
-package main
+package cmd
 
 import (
 	"encoding/json"
 	"log"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/anandasatriaadi/go-idx-scraper/internal/browser"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/announcement"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
-	"github.com/anandasatriaadi/go-idx-scraper/internal/infrastructure/idx"
-	"github.com/anandasatriaadi/go-idx-scraper/internal/infrastructure/persistence/mongo"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/db/mongo"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/idx"
 	"github.com/chromedp/chromedp"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	mongoDriver "go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -27,9 +27,15 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// --- Main Logic ---
+var CheckAnnouncementsCmd = &cobra.Command{
+	Use:   "check-announcements",
+	Short: "Check for new IDX announcements",
+	Run: func(cmd *cobra.Command, args []string) {
+		runAnnouncementChecker(args)
+	},
+}
 
-func main() {
+func runAnnouncementChecker(args []string) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		log.Printf("Failed to get home dir: %v", err)
@@ -73,11 +79,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer logger.Sync()
-	if len(os.Args) < 2 {
-		logger.Error("no config file provided", zap.String("usage", os.Args[0]+" <config_file>"))
-		os.Exit(1)
-	}
-	configPath := os.Args[1]
+
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		logger.Error("Failed to read config", zap.Error(err))
@@ -94,22 +96,14 @@ func main() {
 		cancel()
 	}()
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		logger.Info("Received interrupt signal, shutting down gracefully...")
-		cancel()
-	}()
-
-	database, err := mongo.NewClient(logger)
+	db, err := mongo.NewClient(logger)
 	if err != nil {
 		logger.Error("Failed to create database", zap.Error(err))
 		cancel()
 		os.Exit(1)
 	}
 
-	dbInstance := database.Database("idx")
+	dbInstance := db.Database(viper.GetString("database.db_name"))
 	lRepo := mongo.NewSystemRepository(dbInstance)
 	aRepo := mongo.NewAnnouncementRepository(dbInstance)
 
@@ -144,8 +138,6 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Info("Data scraped successfully")
-	// Optional: save debug data
-	// if err := os.WriteFile("data.json", []byte(data), 0o644); err != nil { ... }
 
 	var resp idx.APIResponse
 	if err := json.Unmarshal([]byte(data), &resp); err != nil {
@@ -163,8 +155,6 @@ func main() {
 	logger.Info("Announcements parsed", zap.Int("count", len(announcements)))
 
 	// Check existing using FindAll with projection
-	// Note: Repo FindAll signature is strict. We might need to implement FindIDs or similar if performance matters.
-	// For now, fetching full docs limit 500 is okay as per original code logic.
 	existingDocs, err := aRepo.FindAll(ctx, bson.M{}, options.Find().SetProjection(bson.D{{Key: "_id", Value: 1}}).SetSort(bson.M{"created_date": -1}).SetLimit(500))
 	if err != nil {
 		logger.Error("Failed to check existing announcements", zap.Error(err))

@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"context"
@@ -13,8 +13,17 @@ import (
 	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/stock"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
 	"github.com/chromedp/chromedp"
+	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )
+
+var UpdateIssuersCmd = &cobra.Command{
+	Use:   "update-issuers",
+	Short: "Update list of issuers",
+	Run: func(cmd *cobra.Command, args []string) {
+		runIssuerUpdater()
+	},
+}
 
 // stringSliceToSet converts a slice of strings into a set-like map.
 // Each string becomes a key in the map with true as its value.
@@ -32,20 +41,15 @@ func stringSliceToSet(strs []string) map[string]bool {
 	return set
 }
 
-func main() {
+func runIssuerUpdater() {
 	logger, err := zap.NewProduction()
 	if err != nil {
 		log.Fatalf("Failed to create logger: %v", err)
 	}
 	defer logger.Sync()
 
-	if len(os.Args) < 2 {
-		logger.Error("Usage: program <config-file>")
-		os.Exit(1)
-	}
-
-	// Read configuration file provided in args
-	cfg, err := config.Load(os.Args[1])
+	// Read configuration file provided in args (using global configPath)
+	cfg, err := config.Load(configPath)
 	if err != nil {
 		logger.Error("Failed to read config", zap.Error(err))
 		os.Exit(1)
@@ -107,11 +111,4 @@ func saveIssuer(filePath string, stocks []string) error {
 		return fmt.Errorf("writing file: %w", err)
 	}
 	return nil
-}
-
-func getPageData(urlstr string, res *string) chromedp.Tasks {
-	return chromedp.Tasks{
-		chromedp.Navigate(urlstr),
-		chromedp.Evaluate(`document.body.innerText`, res),
-	}
 }
