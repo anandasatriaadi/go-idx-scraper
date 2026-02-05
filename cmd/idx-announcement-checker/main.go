@@ -16,12 +16,13 @@ import (
 	"github.com/anandasatriaadi/go-idx-scraper/internal/browser"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/db"
-	"github.com/anandasatriaadi/go-idx-scraper/internal/db/model"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/announcement"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
-	"github.com/anandasatriaadi/go-idx-scraper/internal/types"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/infrastructure/idx"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/infrastructure/persistence/mongo"
 	"github.com/chromedp/chromedp"
 	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	mongoDriver "go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -109,12 +110,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	lRepo := model.NewLastRunRepository(database.GetDatabase("idx"))
+	dbInstance := database.GetDatabase("idx")
+	lRepo := mongo.NewSystemRepository(dbInstance)
+	aRepo := mongo.NewAnnouncementRepository(dbInstance)
+
 	lr, err := lRepo.FindOne(ctx, bson.M{"scriptName": "idx-announcement"})
 	var dateFrom string
 	var latestDate *time.Time
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
+		if err == mongoDriver.ErrNoDocuments {
 			dateFrom = time.Unix(0, 0).Format("20060102")
 		} else {
 			logger.Error("Failed to find last run", zap.Error(err))
@@ -141,20 +145,17 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Info("Data scraped successfully")
-	if err := os.WriteFile("data.json", []byte(data), 0o644); err != nil {
-		logger.Error("Failed to write file", zap.Error(err))
-		cancel()
-		os.Exit(1)
-	}
+	// Optional: save debug data
+	// if err := os.WriteFile("data.json", []byte(data), 0o644); err != nil { ... }
 
-	var resp types.APIResponse
+	var resp idx.APIResponse
 	if err := json.Unmarshal([]byte(data), &resp); err != nil {
 		logger.Error("Failed to unmarshal", zap.Error(err))
 		cancel()
 		os.Exit(1)
 	}
 
-	announcements, err := model.ParseAPIResponse(resp)
+	announcements, err := idx.ParseAPIResponse(resp)
 	if err != nil {
 		logger.Error("Failed to parse API response", zap.Error(err))
 		cancel()
@@ -162,7 +163,9 @@ func main() {
 	}
 	logger.Info("Announcements parsed", zap.Int("count", len(announcements)))
 
-	aRepo := model.NewAnnouncementRepository(database.GetDatabase("idx"))
+	// Check existing using FindAll with projection
+	// Note: Repo FindAll signature is strict. We might need to implement FindIDs or similar if performance matters.
+	// For now, fetching full docs limit 500 is okay as per original code logic.
 	existingDocs, err := aRepo.FindAll(ctx, bson.M{}, options.Find().SetProjection(bson.D{{Key: "_id", Value: 1}}).SetSort(bson.M{"created_date": -1}).SetLimit(500))
 	if err != nil {
 		logger.Error("Failed to check existing announcements", zap.Error(err))
@@ -176,8 +179,11 @@ func main() {
 	logger.Info("Existing announcements checked", zap.Int("existing", len(exists)))
 
 	// Filter announcements based on latestDate and existence in DB
-	var filtered []*model.Announcement
+	var filtered []*announcement.Announcement
 	for _, ann := range announcements {
+		if ann.CreatedDate == nil {
+			continue
+		}
 		annStr := ann.CreatedDate.Format("20060102150405")
 		annInt, _ := strconv.Atoi(annStr)
 		var latestInt int
@@ -193,10 +199,10 @@ func main() {
 	logger.Info("Announcements filtered", zap.Int("new", len(filtered)))
 
 	if len(filtered) > 0 {
-		if _, err := aRepo.CreateMany(ctx, filtered); err != nil {
-			logger.Error("Failed to create announcements", zap.Error(err))
-			cancel()
-			os.Exit(1)
+		for _, f := range filtered {
+			if err := aRepo.Create(ctx, f); err != nil {
+				logger.Error("Failed to create announcement", zap.String("ID", f.ID), zap.Error(err))
+			}
 		}
 		logger.Info("Announcements created", zap.Int("count", len(filtered)))
 	} else {
@@ -206,13 +212,16 @@ func main() {
 
 	// Update latestID if we have new data
 	if len(filtered) > 0 {
-		latestAnn, err := aRepo.FindOne(ctx, bson.M{}, options.FindOne().SetSort(bson.M{"created_date": -1}))
+		// Find latest from DB again to be sure
+		latestAnnDocs, err := aRepo.FindAll(ctx, bson.M{}, options.Find().SetSort(bson.M{"created_date": -1}).SetLimit(1))
 		if err != nil {
 			logger.Error("Failed to get latest announcement", zap.Error(err))
 			cancel()
 			os.Exit(1)
 		}
-		latestDate = latestAnn.CreatedDate
+		if len(latestAnnDocs) > 0 {
+			latestDate = latestAnnDocs[0].CreatedDate
+		}
 	}
 
 	{
@@ -224,7 +233,7 @@ func main() {
 			"metadata":   bson.M{"latest_date": latestDate},
 		}}
 		opts := options.UpdateOne().SetUpsert(true)
-		if _, err := lRepo.UpdateOne(ctx, filter, update, opts); err != nil {
+		if err := lRepo.UpdateOne(ctx, filter, update, opts); err != nil {
 			logger.Error("Failed to save last run", zap.Error(err))
 			cancel()
 			os.Exit(1)
@@ -238,7 +247,7 @@ func main() {
 			"penyampaianbuktiiklan",
 		}
 
-		var emailFiltered []*model.Announcement
+		var emailFiltered []*announcement.Announcement
 		for _, ann := range filtered {
 			if ann.JudulPengumuman != nil {
 				// Remove non-alphabetic characters and whitespace

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
-	"github.com/anandasatriaadi/go-idx-scraper/internal/db/model"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/announcement"
 	"gopkg.in/gomail.v2"
 )
 
@@ -312,8 +312,8 @@ type TemplateData struct {
 }
 
 // groupAnnouncements groups announcements by KodeEmiten and prepares data for the template.
-func groupAnnouncements(announcements []*model.Announcement) []GroupData {
-	grouped := make(map[string][]*model.Announcement)
+func groupAnnouncements(announcements []*announcement.Announcement) []GroupData {
+	grouped := make(map[string][]*announcement.Announcement)
 	for _, ann := range announcements {
 		if ann.KodeEmiten != nil {
 			grouped[*ann.KodeEmiten] = append(grouped[*ann.KodeEmiten], ann)
@@ -370,7 +370,7 @@ func groupAnnouncements(announcements []*model.Announcement) []GroupData {
 }
 
 // GenerateAnnouncementEmail generates HTML content for an announcement email using the provided announcements.
-func GenerateAnnouncementEmail(announcements []*model.Announcement) (string, error) {
+func GenerateAnnouncementEmail(announcements []*announcement.Announcement) (string, error) {
 	groups := groupAnnouncements(announcements)
 	data := TemplateData{Groups: groups}
 
