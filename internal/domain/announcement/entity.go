@@ -10,6 +10,8 @@ import (
 
 //go:generate go run ../../../tools/mongo_repo/main.go -type=Announcement -collection=announcements
 type Announcement struct {
+	CreatedAt         time.Time           `json:"created_at" bson:"created_at"`
+	UpdatedAt         time.Time           `json:"updated_at" bson:"updated_at"`
 	ID                string              `json:"id" bson:"_id,omitempty"`
 	EfekEmitenDire    *bool               `json:"efek_emiten_dire" bson:"efek_emiten_dire"`
 	EfekEmitenDinfra  *bool               `json:"efek_emiten_dinfra" bson:"efek_emiten_dinfra"`

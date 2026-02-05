@@ -9,10 +9,10 @@ import (
 )
 
 type LastRun struct {
-	ID         bson.ObjectID `bson:"_id,omitempty" json:"id"`
-	ScriptName string        `bson:"scriptName" json:"scriptName"`
 	LastRunAt  time.Time     `bson:"lastRunAt" json:"lastRunAt"`
 	Metadata   bson.M        `bson:"metadata,omitempty" json:"metadata,omitempty"`
+	ScriptName string        `bson:"scriptName" json:"scriptName"`
+	ID         bson.ObjectID `bson:"_id,omitempty" json:"id"`
 }
 
 type Repository interface {

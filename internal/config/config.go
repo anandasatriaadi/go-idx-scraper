@@ -41,10 +41,10 @@ type DatabaseConfig struct {
 // Config holds configuration settings.
 type Config struct {
 	Paths            PathConfig     `mapstructure:"paths"`
-	Mail             MailConfig     `mapstructure:"mailing"`
 	Download         DownloadConfig `mapstructure:"download"`
 	Database         DatabaseConfig `mapstructure:"database"`
 	OpenrouterApiKey string         `mapstructure:"openrouter_api_key"`
+	Mail             MailConfig     `mapstructure:"mailing"`
 }
 
 var (

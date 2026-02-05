@@ -9,13 +9,13 @@ import (
 )
 
 type News struct {
-	ID       bson.ObjectID `bson:"_id,omitempty" json:"id"`
-	Title    string        `bson:"title" json:"title"`
 	Date     time.Time     `bson:"date" json:"date"`
+	Title    string        `bson:"title" json:"title"`
 	Summary  string        `bson:"summary" json:"summary"`
 	Content  string        `bson:"content" json:"content"`
-	Priority int           `bson:"priority" json:"priority"`
 	Link     string        `bson:"link" json:"link"`
+	Priority int           `bson:"priority" json:"priority"`
+	ID       bson.ObjectID `bson:"_id,omitempty" json:"id"`
 }
 
 type Repository interface {

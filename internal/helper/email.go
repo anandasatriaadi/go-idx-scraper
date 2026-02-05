@@ -60,8 +60,8 @@ func GenerateNewReportEmail(stocks []string, romanPeriod string, config *config.
 		ModeText  string
 		Year      string
 		DateTime  string
-		HasStocks bool
 		StockRows [][]StockData
+		HasStocks bool
 	}{
 		ModeText:  modeText,
 		Year:      config.Download.Year,
@@ -296,8 +296,8 @@ type ItemData struct {
 	Date                 string
 	Title                string
 	MainLink             string
-	HasBorder            bool // Indicates if a bottom border should be applied (not the last item in group)
 	SecondaryAttachments []AttachmentData
+	HasBorder            bool
 }
 
 // GroupData represents data for a group of announcements by ticker.
