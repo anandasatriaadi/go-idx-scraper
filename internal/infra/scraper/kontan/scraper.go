@@ -8,23 +8,78 @@ import (
 
 	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
 	"github.com/PuerkitoBio/goquery"
-	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/news"
-	"github.com/chromedp/chromedp"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/news"
 	"github.com/microcosm-cc/bluemonday"
+	"github.com/tebeka/selenium"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.uber.org/zap"
 )
 
+type Browser interface {
+	FetchList(ctx context.Context, url string) (string, error)
+	FetchContent(ctx context.Context, url string) (content string, pagination string, err error)
+}
+
+type DefaultBrowser struct {
+	driver selenium.WebDriver
+}
+
+func NewDefaultBrowser(driver selenium.WebDriver) *DefaultBrowser {
+	return &DefaultBrowser{driver: driver}
+}
+
+func (b *DefaultBrowser) FetchList(ctx context.Context, url string) (string, error) {
+	if err := b.driver.Get(url); err != nil {
+		return "", err
+	}
+	// Simple sleep to let JS render
+	time.Sleep(500 * time.Millisecond)
+
+	elem, err := b.driver.FindElement(selenium.ByCSSSelector, "div.list-berita > ul")
+	if err != nil {
+		return "", err
+	}
+	return elem.GetAttribute("innerHTML")
+}
+
+func (b *DefaultBrowser) FetchContent(ctx context.Context, url string) (string, string, error) {
+	if err := b.driver.Get(url); err != nil {
+		return "", "", err
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	articleElem, err := b.driver.FindElement(selenium.ByCSSSelector, ".tmpt-desk-kon")
+	if err != nil {
+		return "", "", err
+	}
+	articleHtml, _ := articleElem.GetAttribute("innerHTML")
+
+	var paginatedHtml string
+	pagElem, err := b.driver.FindElement(selenium.ByCSSSelector, "div.pagination")
+	if err == nil {
+		paginatedHtml, _ = pagElem.GetAttribute("innerHTML")
+	}
+
+	return articleHtml, paginatedHtml, nil
+}
+
 type Scraper struct {
 	logger    *zap.Logger
 	processor *HTMLToMarkdownProcessor
+	browser   Browser
 }
 
-func NewScraper(logger *zap.Logger) *Scraper {
+func NewScraper(logger *zap.Logger, browser Browser) *Scraper {
 	return &Scraper{
 		logger:    logger,
 		processor: NewHTMLToMarkdownProcessor(logger),
+		browser:   browser,
 	}
+}
+
+func (s *Scraper) WithBrowser(b Browser) *Scraper {
+	s.browser = b
+	return s
 }
 
 // Article struct internal to scraper
@@ -102,7 +157,6 @@ func (s *Scraper) Scrape(ctx context.Context, startDate, endDate time.Time, onNe
 }
 
 func (s *Scraper) fetchArticleListHTML(ctx context.Context, date time.Time, perPage int) (string, error) {
-	var htmlContent string
 	var perPageStr string
 	if perPage == 0 {
 		perPageStr = ""
@@ -113,26 +167,15 @@ func (s *Scraper) fetchArticleListHTML(ctx context.Context, date time.Time, perP
 	month := fmt.Sprintf("%02d", int(date.Month()))
 	year := date.Year()
 	url := fmt.Sprintf("https://www.kontan.co.id/search/indeks?kanal=investasi&tanggal=%s&bulan=%s&tahun=%d&pos=indeks&per_page=%s", day, month, year, perPageStr)
-	err := chromedp.Run(ctx,
-		chromedp.Navigate(url),
-		chromedp.Sleep(200*time.Millisecond),
-		chromedp.InnerHTML("div.list-berita > ul", &htmlContent),
-	)
+	htmlContent, err := s.browser.FetchList(ctx, url)
 	if err != nil {
-		return "", fmt.Errorf("chromedp run error for list: %w", err)
+		return "", fmt.Errorf("browser fetch error for list: %w", err)
 	}
 	return htmlContent, nil
 }
 
 func (s *Scraper) fetchArticleContent(ctx context.Context, link string) (string, error) {
-	var articleHtml string
-	var paginatedHtml string
-	err := chromedp.Run(ctx,
-		chromedp.Navigate(link),
-		chromedp.Sleep(200*time.Millisecond),
-		chromedp.InnerHTML(".tmpt-desk-kon", &articleHtml),
-		chromedp.InnerHTML("div.pagination", &paginatedHtml),
-	)
+	articleHtml, paginatedHtml, err := s.browser.FetchContent(ctx, link)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch article content: %w", err)
 	}

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/announcement"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/announcement"
 	"github.com/go-chi/chi/v5"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )

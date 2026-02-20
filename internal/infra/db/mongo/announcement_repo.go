@@ -2,8 +2,9 @@ package mongo
 
 import (
 	"context"
+	"time"
 
-	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/announcement"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/announcement"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -20,6 +21,11 @@ func NewAnnouncementRepository(db *mongo.Database) announcement.Repository {
 }
 
 func (r *AnnouncementRepository) Create(ctx context.Context, model *announcement.Announcement) error {
+	now := time.Now()
+	if model.CreatedAt.IsZero() {
+		model.CreatedAt = now
+	}
+	model.UpdatedAt = now
 	_, err := r.collection.InsertOne(ctx, model)
 	return err
 }

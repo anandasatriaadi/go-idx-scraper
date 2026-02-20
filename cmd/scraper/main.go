@@ -1,40 +1,33 @@
-package cmd
+package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"time"
 
 	br "github.com/anandasatriaadi/go-idx-scraper/internal/browser"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
-	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/news"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/news"
 	newsRepo "github.com/anandasatriaadi/go-idx-scraper/internal/infra/db/mongo"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/scraper/kontan"
-	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.uber.org/zap"
 )
 
-var (
-	scrapeStartDate string
-	scrapeEndDate   string
-)
+func main() {
+	var configPath string
+	var noHeadless bool
+	var scrapeStartDate string
+	var scrapeEndDate string
 
-var ScrapeKontanCmd = &cobra.Command{
-	Use:   "scrape-kontan",
-	Short: "Scrape Kontan news",
-	Run: func(cmd *cobra.Command, args []string) {
-		runScraper()
-	},
-}
+	flag.StringVar(&configPath, "config", "config/config.yml", "Path to configuration file")
+	flag.BoolVar(&noHeadless, "no-headless", false, "Disable headless mode for browser")
+	flag.StringVar(&scrapeStartDate, "start-date", "", "Start date (YYYY-MM-DD), default today")
+	flag.StringVar(&scrapeEndDate, "end-date", "", "End date (YYYY-MM-DD), default today")
+	flag.Parse()
 
-func init() {
-	ScrapeKontanCmd.Flags().StringVar(&scrapeStartDate, "start-date", "", "Start date (YYYY-MM-DD), default today")
-	ScrapeKontanCmd.Flags().StringVar(&scrapeEndDate, "end-date", "", "End date (YYYY-MM-DD), default today")
-}
-
-func runScraper() {
 	logger, err := zap.NewDevelopment()
 	if err != nil {
 		log.Fatalf("Failed to initialize logger: %v", err)
@@ -47,23 +40,27 @@ func runScraper() {
 		return
 	}
 
-	// Connect to MongoDB
+	if noHeadless {
+		cfg.SetHeadless(false)
+	}
+
 	ctx := context.Background()
 	dbClient, err := newsRepo.NewClient(logger)
 	if err != nil {
 		logger.Fatal("Failed to connect to MongoDB", zap.Error(err))
 	}
 
-	// Infrastructure: Repositories
-	repo := newsRepo.NewNewsRepository(dbClient.Database(viper.GetString("database.db_names")))
-
-	// Application: Services
+	repo := newsRepo.NewNewsRepository(dbClient.Database(viper.GetString("database.db_name")))
 	service := news.NewService(repo, logger, cfg)
 
-	// Infrastructure: Scraper
-	scraper := kontan.NewScraper(logger)
+	browser, err := br.SetupSelenium(cfg)
+	if err != nil {
+		logger.Fatal("Failed to setup selenium", zap.Error(err))
+	}
+	defer browser.Close()
 
-	// Parse dates
+	scraper := kontan.NewScraper(logger, kontan.NewDefaultBrowser(browser.Driver))
+
 	now := time.Now()
 	var startDate, endDate time.Time
 
@@ -85,13 +82,8 @@ func runScraper() {
 		}
 	}
 
-	// Setup Chromedp context
-	chromeCtx, cancel := br.SetupChromeDp(cfg)
-	defer cancel()
-
 	var ids []bson.ObjectID
-
-	err = scraper.Scrape(chromeCtx, startDate, endDate, func(n *news.News) error {
+	err = scraper.Scrape(ctx, startDate, endDate, func(n *news.News) error {
 		if err := service.Create(ctx, n); err != nil {
 			return err
 		}

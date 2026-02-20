@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/common"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/common"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 

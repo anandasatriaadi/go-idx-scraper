@@ -1,38 +1,77 @@
-package cmd
+package main
 
 import (
-	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"os"
 	"time"
 
-	"github.com/anandasatriaadi/go-idx-scraper/internal/browser"
+	br "github.com/anandasatriaadi/go-idx-scraper/internal/browser"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
-	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/stock"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/stock"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
-	"github.com/chromedp/chromedp"
-	"github.com/spf13/cobra"
+	"github.com/tebeka/selenium"
 	"go.uber.org/zap"
 )
 
-var UpdateIssuersCmd = &cobra.Command{
-	Use:   "update-issuers",
-	Short: "Update list of issuers",
-	Run: func(cmd *cobra.Command, args []string) {
-		runIssuerUpdater()
-	},
+func main() {
+	var configPath string
+	var noHeadless bool
+	flag.StringVar(&configPath, "config", "config/config.yml", "Path to configuration file")
+	flag.BoolVar(&noHeadless, "no-headless", false, "Disable headless mode for browser")
+	flag.Parse()
+
+	logger, err := zap.NewProduction()
+	if err != nil {
+		log.Fatalf("Failed to create logger: %v", err)
+	}
+	defer logger.Sync()
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		logger.Error("Failed to read config", zap.Error(err))
+		os.Exit(1)
+	}
+
+	if noHeadless {
+		cfg.SetHeadless(false)
+	}
+
+	browser, err := br.SetupSelenium(cfg)
+	if err != nil {
+		logger.Error("Failed to setup selenium", zap.Error(err))
+		os.Exit(1)
+	}
+	defer browser.Close()
+
+	currIssuerList, err := helper.LoadCurrent(cfg.Paths.IssuerList, logger)
+	if err != nil {
+		logger.Error("Failed to load current issuer list", zap.Error(err))
+		os.Exit(1)
+	}
+	currIssuerSet := stringSliceToSet(currIssuerList)
+
+	jsonData, err := fetchStocks(browser.Driver)
+	if err != nil {
+		logger.Error("Failed to fetch stocks", zap.Error(err))
+		os.Exit(1)
+	}
+	for _, s := range jsonData {
+		if !currIssuerSet[s.Code] {
+			currIssuerList = append(currIssuerList, s.Code)
+			currIssuerSet[s.Code] = true
+		}
+	}
+
+	if err := saveIssuer(cfg.Paths.IssuerList, currIssuerList); err != nil {
+		logger.Error("Failed to save issuer list", zap.Error(err))
+		os.Exit(1)
+	}
+	logger.Info("Issuer list updated", zap.Int("total", len(currIssuerList)))
 }
 
-// stringSliceToSet converts a slice of strings into a set-like map.
-// Each string becomes a key in the map with true as its value.
-//
-// Parameters:
-// - strs: A slice of strings.
-//
-// Returns:
-// - A map where each string from the slice is a key.
 func stringSliceToSet(strs []string) map[string]bool {
 	set := make(map[string]bool)
 	for _, s := range strs {
@@ -41,59 +80,23 @@ func stringSliceToSet(strs []string) map[string]bool {
 	return set
 }
 
-func runIssuerUpdater() {
-	logger, err := zap.NewProduction()
-	if err != nil {
-		log.Fatalf("Failed to create logger: %v", err)
-	}
-	defer logger.Sync()
-
-	// Read configuration file provided in args (using global configPath)
-	cfg, err := config.Load(configPath)
-	if err != nil {
-		logger.Error("Failed to read config", zap.Error(err))
-		os.Exit(1)
-	}
-
-	ctx, cancel := browser.SetupChromeDp(cfg)
-	defer cancel()
-
-	// Load current list of stocks and make it into a set (in this case a map)
-	currIssuerList, err := helper.LoadCurrent(cfg.Paths.IssuerList, logger)
-	if err != nil {
-		logger.Error("Failed to load current issuer list", zap.Error(err))
-		os.Exit(1)
-	}
-	currIssuerSet := stringSliceToSet(currIssuerList)
-
-	jsonData, err := fetchStocks(ctx)
-	if err != nil {
-		logger.Error("Failed to fetch stocks", zap.Error(err))
-		os.Exit(1)
-	}
-	for _, stock := range jsonData {
-		if !currIssuerSet[stock.Code] {
-			currIssuerList = append(currIssuerList, stock.Code)
-			currIssuerSet[stock.Code] = true
-		}
-	}
-
-	// Save stocks list appended with new stocks
-	if err := saveIssuer(cfg.Paths.IssuerList, currIssuerList); err != nil {
-		logger.Error("Failed to save issuer list", zap.Error(err))
-		os.Exit(1)
-	}
-	logger.Info("Issuer list updated", zap.Int("total", len(currIssuerList)))
-}
-
-func fetchStocks(ctx context.Context) ([]stock.StockData, error) {
+func fetchStocks(driver selenium.WebDriver) ([]stock.StockData, error) {
 	url := fmt.Sprintf("https://www.idx.co.id/primary/TradingSummary/GetStockSummary?length=9999&start=0&date=%s", time.Now().AddDate(0, 0, -1).Format("20060102"))
 
-	var data string
-	err := chromedp.Run(ctx, getPageData(url, &data))
-	if err != nil {
-		return nil, fmt.Errorf("running chromedp: %w", err)
+	if err := driver.Get(url); err != nil {
+		return nil, fmt.Errorf("navigating to url: %w", err)
 	}
+	time.Sleep(1 * time.Second)
+
+	body, err := driver.FindElement(selenium.ByTagName, "body")
+	if err != nil {
+		return nil, fmt.Errorf("finding body: %w", err)
+	}
+	data, err := body.Text()
+	if err != nil {
+		return nil, fmt.Errorf("getting body text: %w", err)
+	}
+
 	var resp stock.StockListResponse
 	if err := json.Unmarshal([]byte(data), &resp); err != nil {
 		return nil, fmt.Errorf("unmarshaling response: %w", err)
@@ -101,7 +104,6 @@ func fetchStocks(ctx context.Context) ([]stock.StockData, error) {
 	return resp.Data, nil
 }
 
-// saveIssuer saves stocks.
 func saveIssuer(filePath string, stocks []string) error {
 	data, err := json.MarshalIndent(stocks, "", "  ")
 	if err != nil {

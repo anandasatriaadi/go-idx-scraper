@@ -38,11 +38,19 @@ type DatabaseConfig struct {
 	DbName string `mapstructure:"db_name"`
 }
 
+// BrowserConfig holds browser settings.
+type BrowserConfig struct {
+	Headless         bool   `mapstructure:"headless"`
+	RemoteURL        string `mapstructure:"remote_url"`
+	ChromeDriverPath string `mapstructure:"chromedriver_path"`
+}
+
 // Config holds configuration settings.
 type Config struct {
 	Paths            PathConfig     `mapstructure:"paths"`
 	Download         DownloadConfig `mapstructure:"download"`
 	Database         DatabaseConfig `mapstructure:"database"`
+	Browser          BrowserConfig  `mapstructure:"browser"`
 	OpenrouterApiKey string         `mapstructure:"openrouter_api_key"`
 	Mail             MailConfig     `mapstructure:"mailing"`
 }
@@ -90,6 +98,10 @@ func Load(configPath string) (*Config, error) {
 
 func Get() *Config {
 	return instance
+}
+
+func (c *Config) SetHeadless(headless bool) {
+	c.Browser.Headless = headless
 }
 
 // Validate checks config validity and returns error if invalid.

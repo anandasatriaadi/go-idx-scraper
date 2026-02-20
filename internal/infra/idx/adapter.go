@@ -3,8 +3,8 @@ package idx
 import (
 	"time"
 
-	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/announcement"
-	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/common"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/announcement"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/common"
 )
 
 type AnnouncementResponse struct {

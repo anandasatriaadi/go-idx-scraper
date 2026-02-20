@@ -1,7 +1,9 @@
-package cmd
+package main
 
 import (
+	"context"
 	"encoding/json"
+	"flag"
 	"log"
 	"os"
 	"path/filepath"
@@ -11,15 +13,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anandasatriaadi/go-idx-scraper/internal/browser"
+	br "github.com/anandasatriaadi/go-idx-scraper/internal/browser"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
-	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/announcement"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/announcement"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/db/mongo"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/idx"
-	"github.com/chromedp/chromedp"
-	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/tebeka/selenium"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	mongoDriver "go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -27,15 +28,13 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-var CheckAnnouncementsCmd = &cobra.Command{
-	Use:   "check-announcements",
-	Short: "Check for new IDX announcements",
-	Run: func(cmd *cobra.Command, args []string) {
-		runAnnouncementChecker(args)
-	},
-}
+func main() {
+	var configPath string
+	var noHeadless bool
+	flag.StringVar(&configPath, "config", "config/config.yml", "Path to configuration file")
+	flag.BoolVar(&noHeadless, "no-headless", false, "Disable headless mode for browser")
+	flag.Parse()
 
-func runAnnouncementChecker(args []string) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		log.Printf("Failed to get home dir: %v", err)
@@ -70,8 +69,8 @@ func runAnnouncementChecker(args []string) {
 			EncodeDuration: zapcore.SecondsDurationEncoder,
 			EncodeCaller:   zapcore.ShortCallerEncoder,
 		},
-		OutputPaths:      []string{logFile},
-		ErrorOutputPaths: []string{logFile},
+		OutputPaths:      []string{logFile, "stdout"},
+		ErrorOutputPaths: []string{logFile, "stderr"},
 	}
 	logger, err := zCfg.Build()
 	if err != nil {
@@ -86,20 +85,21 @@ func runAnnouncementChecker(args []string) {
 		os.Exit(1)
 	}
 
-	ctx, cancel := browser.SetupChromeDp(cfg)
-	defer func() {
-		if r := recover(); r != nil {
-			logger.Error("Panic occurred", zap.Any("panic", r))
-			cancel()
-			os.Exit(1)
-		}
-		cancel()
-	}()
+	if noHeadless {
+		cfg.SetHeadless(false)
+	}
 
+	browser, err := br.SetupSelenium(cfg)
+	if err != nil {
+		logger.Error("Failed to setup selenium", zap.Error(err))
+		os.Exit(1)
+	}
+	defer browser.Close()
+
+	ctx := context.Background()
 	db, err := mongo.NewClient(logger)
 	if err != nil {
 		logger.Error("Failed to create database", zap.Error(err))
-		cancel()
 		os.Exit(1)
 	}
 
@@ -115,7 +115,6 @@ func runAnnouncementChecker(args []string) {
 			dateFrom = time.Unix(0, 0).Format("20060102")
 		} else {
 			logger.Error("Failed to find last run", zap.Error(err))
-			cancel()
 			os.Exit(1)
 		}
 	} else {
@@ -127,47 +126,51 @@ func runAnnouncementChecker(args []string) {
 		}
 	}
 
-	var data string
-	// get page data as string
 	dateTo := time.Now().AddDate(0, 0, 1).Format("20060102")
 	url := `https://www.idx.co.id/primary/ListedCompany/GetAnnouncement?kodeEmiten=&emitenType=s&indexFrom=0&pageSize=500&dateFrom=` + dateFrom + `&dateTo=` + dateTo + `&lang=id&keyword=`
 	logger.Info("Starting data scrape", zap.String("dateFrom", dateFrom), zap.String("dateTo", dateTo))
-	if err := chromedp.Run(ctx, getPageData(url, &data)); err != nil {
-		logger.Error("Failed to run chromedp", zap.Error(err))
-		cancel()
+
+	if err := browser.Driver.Get(url); err != nil {
+		logger.Error("Failed to navigate", zap.Error(err))
+		os.Exit(1)
+	}
+	time.Sleep(1 * time.Second)
+	body, err := browser.Driver.FindElement(selenium.ByTagName, "body")
+	if err != nil {
+		logger.Error("Failed to find body", zap.Error(err))
+		os.Exit(1)
+	}
+	data, err := body.Text()
+	if err != nil {
+		logger.Error("Failed to get text", zap.Error(err))
 		os.Exit(1)
 	}
 	logger.Info("Data scraped successfully")
 
 	var resp idx.APIResponse
 	if err := json.Unmarshal([]byte(data), &resp); err != nil {
+		logger.Info("Raw data", zap.String("data", data))
 		logger.Error("Failed to unmarshal", zap.Error(err))
-		cancel()
 		os.Exit(1)
 	}
 
 	announcements, err := idx.ParseAPIResponse(resp)
 	if err != nil {
 		logger.Error("Failed to parse API response", zap.Error(err))
-		cancel()
 		os.Exit(1)
 	}
 	logger.Info("Announcements parsed", zap.Int("count", len(announcements)))
 
-	// Check existing using FindAll with projection
 	existingDocs, err := aRepo.FindAll(ctx, bson.M{}, options.Find().SetProjection(bson.D{{Key: "_id", Value: 1}}).SetSort(bson.M{"created_date": -1}).SetLimit(500))
 	if err != nil {
 		logger.Error("Failed to check existing announcements", zap.Error(err))
-		cancel()
 		os.Exit(1)
 	}
 	exists := make(map[string]bool)
 	for _, doc := range existingDocs {
 		exists[doc.ID] = true
 	}
-	logger.Info("Existing announcements checked", zap.Int("existing", len(exists)))
 
-	// Filter announcements based on latestDate and existence in DB
 	var filtered []*announcement.Announcement
 	for _, ann := range announcements {
 		if ann.CreatedDate == nil {
@@ -196,16 +199,13 @@ func runAnnouncementChecker(args []string) {
 		logger.Info("Announcements created", zap.Int("count", len(filtered)))
 	} else {
 		logger.Info("No new announcements to create")
-		goto done
+		goto finish
 	}
 
-	// Update latestID if we have new data
 	if len(filtered) > 0 {
-		// Find latest from DB again to be sure
 		latestAnnDocs, err := aRepo.FindAll(ctx, bson.M{}, options.Find().SetSort(bson.M{"created_date": -1}).SetLimit(1))
 		if err != nil {
 			logger.Error("Failed to get latest announcement", zap.Error(err))
-			cancel()
 			os.Exit(1)
 		}
 		if len(latestAnnDocs) > 0 {
@@ -214,7 +214,6 @@ func runAnnouncementChecker(args []string) {
 	}
 
 	{
-		// Save last run
 		filter := bson.M{"scriptName": "idx-announcement"}
 		update := bson.M{"$set": bson.M{
 			"scriptName": "idx-announcement",
@@ -224,12 +223,10 @@ func runAnnouncementChecker(args []string) {
 		opts := options.UpdateOne().SetUpsert(true)
 		if err := lRepo.UpdateOne(ctx, filter, update, opts); err != nil {
 			logger.Error("Failed to save last run", zap.Error(err))
-			cancel()
 			os.Exit(1)
 		}
 		logger.Info("Last run saved")
 
-		// Filter announcements to exclude specific titles
 		excludedTitles := []string{
 			"laporanbulananregistrasipemegangefek",
 			"penjelasanatasvolatilitastransaksi",
@@ -239,7 +236,6 @@ func runAnnouncementChecker(args []string) {
 		var emailFiltered []*announcement.Announcement
 		for _, ann := range filtered {
 			if ann.JudulPengumuman != nil {
-				// Remove non-alphabetic characters and whitespace
 				re := regexp.MustCompile(`[^a-zA-Z]`)
 				normalizedTitle := re.ReplaceAllString(*ann.JudulPengumuman, "")
 				normalizedTitle = strings.TrimSpace(normalizedTitle)
@@ -262,36 +258,40 @@ func runAnnouncementChecker(args []string) {
 		}
 
 		if len(emailFiltered) > 0 {
-			content, err := helper.GenerateAnnouncementEmail(emailFiltered)
-			if err != nil {
-				logger.Error("Failed to generate email content", zap.Error(err))
-			} else {
-				logger.Info("Email content generated")
-			}
-			if err := helper.SendAnnouncementMail(content, cfg); err != nil {
-				logger.Error("Failed to send email", zap.Error(err))
-			} else {
-				logger.Info("Email sent successfully")
+			const batchSize = 50
+			for i := 0; i < len(emailFiltered); i += batchSize {
+				end := i + batchSize
+				if end > len(emailFiltered) {
+					end = len(emailFiltered)
+				}
+				batch := emailFiltered[i:end]
+
+				logger.Info("Sending email batch", zap.Int("batch_index", i/batchSize+1), zap.Int("batch_size", len(batch)), zap.Int("total", len(emailFiltered)))
+
+				content, err := helper.GenerateAnnouncementEmail(batch)
+				if err != nil {
+					logger.Error("Failed to generate email content", zap.Error(err))
+					continue
+				}
+
+				if err := helper.SendAnnouncementMail(content, cfg); err != nil {
+					logger.Error("Failed to send email batch", zap.Int("batch_index", i/batchSize+1), zap.Error(err))
+				} else {
+					logger.Info("Email batch sent successfully", zap.Int("batch_index", i/batchSize+1))
+				}
+
+				if end < len(emailFiltered) {
+					time.Sleep(2 * time.Second)
+				}
 			}
 		} else {
 			logger.Info("No announcements to send after filtering excluded titles")
 		}
 	}
 
-done:
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	logger.Info("Memory usage", zap.Float64("MB", float64(m.Alloc)/(1024*1024)))
-
+finish:
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+	logger.Info("Memory usage", zap.Float64("MB", float64(mem.Alloc)/(1024*1024)))
 	logger.Info("Process completed successfully")
-}
-
-// getPageData navigates to the URL and retrieves the page data as a string.
-//
-// Assumes the page content is JSON text in the body.
-func getPageData(urlstr string, res *string) chromedp.Tasks {
-	return chromedp.Tasks{
-		chromedp.Navigate(urlstr),
-		chromedp.Evaluate(`document.body.innerText`, res),
-	}
 }

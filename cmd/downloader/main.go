@@ -1,7 +1,8 @@
-package cmd
+package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -15,19 +16,9 @@ import (
 	br "github.com/anandasatriaadi/go-idx-scraper/internal/browser"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
-	"github.com/chromedp/cdproto/browser"
-	"github.com/chromedp/chromedp"
-	"github.com/spf13/cobra"
+	"github.com/tebeka/selenium"
 	"go.uber.org/zap"
 )
-
-var DownloadReportsCmd = &cobra.Command{
-	Use:   "download-reports",
-	Short: "Download financial reports",
-	Run: func(cmd *cobra.Command, args []string) {
-		runDownloader()
-	},
-}
 
 const (
 	DownloadTimeout = 30 * time.Second
@@ -36,8 +27,13 @@ const (
 
 var errorTitles = []string{"404", "document", "503", "attention required", "just a moment"}
 
-func runDownloader() {
-	var err error
+func main() {
+	var configPath string
+	var noHeadless bool
+	flag.StringVar(&configPath, "config", "config/config.yml", "Path to configuration file")
+	flag.BoolVar(&noHeadless, "no-headless", false, "Disable headless mode for browser")
+	flag.Parse()
+
 	logger, err := zap.NewDevelopment()
 	if err != nil {
 		log.Fatalf("Failed to initialize logger: %v", err)
@@ -50,18 +46,20 @@ func runDownloader() {
 		return
 	}
 
-	// Setup chromedp context
-	ctx, cancel := br.SetupChromeDp(cfg)
+	if noHeadless {
+		cfg.SetHeadless(false)
+	}
+
+	browser, err := br.SetupSelenium(cfg)
+	if err != nil {
+		logger.Error("Failed to setup selenium", zap.Error(err))
+		return
+	}
+	defer browser.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	defer func() {
-		if r := recover(); r != nil {
-			logger.Error("Panic recovered", zap.Any("panic", r))
-			cancel()
-		}
-	}()
-
-	// Setup signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -70,13 +68,12 @@ func runDownloader() {
 		cancel()
 	}()
 
-	// Load stocks list and prep
 	issuerList, err := helper.LoadCurrent(cfg.Paths.IssuerList, logger)
 	if err != nil {
 		logger.Error("Failed to load issuer list", zap.Error(err))
 		return
 	}
-	processStocks(issuerList, cfg, ctx, cancel, logger)
+	processStocks(issuerList, cfg, ctx, browser.Driver, logger)
 }
 
 func preparePeriodParams(cfg *config.Config, logger *zap.Logger) (period string, modePeriod string) {
@@ -85,7 +82,7 @@ func preparePeriodParams(cfg *config.Config, logger *zap.Logger) (period string,
 		logger.Warn("Invalid MonthPeriod, using 0", zap.String("value", cfg.Download.MonthPeriod), zap.Error(err))
 		monthPeriod = 0
 	}
-	period = strings.Repeat("I", monthPeriod) // Assuming "I" denotes Interim periods
+	period = strings.Repeat("I", monthPeriod)
 	modePeriod = fmt.Sprintf("%s%d", cfg.Download.Mode, monthPeriod)
 	return period, modePeriod
 }
@@ -110,36 +107,18 @@ func checkPageTitleForErrors(title, stockName string, logger *zap.Logger) error 
 	return nil
 }
 
-func downloadFile(url, filePath string, cfg *config.Config, ctx context.Context, logger *zap.Logger) error {
-	html := fmt.Sprintf(`
-		<html>
-		<body>
-			<a id="download-link" href="%s" download="%s">Download File</a>
-		</body>
-		</html>
-	`, url, filePath)
-	dataURL := "data:text/html;charset=utf-8," + strings.ReplaceAll(html, " ", "%20")
-
-	var title string
-	// Navigate to the temporary page and click the download link
-	err := chromedp.Run(ctx,
-		browser.SetDownloadBehavior(browser.SetDownloadBehaviorBehaviorAllow).
-			WithDownloadPath(cfg.Paths.DownloadDir),
-		chromedp.Navigate(dataURL),
-		chromedp.Click("#download-link", chromedp.ByID),
-		chromedp.Title(&title),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to navigate and trigger download: %w", err)
+func downloadFile(url, filePath string, cfg *config.Config, ctx context.Context, driver selenium.WebDriver, logger *zap.Logger) error {
+	if err := driver.Get(url); err != nil {
+		return fmt.Errorf("failed to navigate: %w", err)
 	}
+
+	title, _ := driver.Title()
 	logger.Info("Browser title retrieved", zap.String("title", title))
 
-	// Check title for errors once after navigation
 	if err := checkPageTitleForErrors(title, filepath.Base(filePath), logger); err != nil {
 		return err
 	}
 
-	// Wait for download with improved loop
 	timeout := time.After(DownloadTimeout)
 	ticker := time.NewTicker(PollInterval)
 	defer ticker.Stop()
@@ -149,7 +128,7 @@ waitLoop:
 		select {
 		case <-ctx.Done():
 			logger.Info("Shutdown requested during download wait")
-			os.Remove(filePath) // Ignore error if file doesn't exist
+			os.Remove(filePath)
 			return ctx.Err()
 		case <-timeout:
 			logger.Warn("Download timed out", zap.String("file", filePath))
@@ -164,7 +143,7 @@ waitLoop:
 	return nil
 }
 
-func processStocks(issuerList []string, cfg *config.Config, ctx context.Context, cancel context.CancelFunc, logger *zap.Logger) {
+func processStocks(issuerList []string, cfg *config.Config, ctx context.Context, driver selenium.WebDriver, logger *zap.Logger) {
 	period, modePeriod := preparePeriodParams(cfg, logger)
 
 	var downloadedStocks []string
@@ -181,7 +160,7 @@ func processStocks(issuerList []string, cfg *config.Config, ctx context.Context,
 		var filename string
 		if cfg.Download.Mode == "AUDIT" {
 			filename = fmt.Sprintf("FinancialStatement-%s-Tahunan-%s.xlsx", cfg.Download.Year, stockName)
-			modePeriod = "Audit" // Override for AUDIT mode
+			modePeriod = "Audit"
 		} else {
 			filename = fmt.Sprintf("FinancialStatement-%s-%s-%s.xlsx", cfg.Download.Year, period, stockName)
 		}
@@ -192,12 +171,11 @@ func processStocks(issuerList []string, cfg *config.Config, ctx context.Context,
 			continue
 		}
 
-		url := fmt.Sprintf("https://www.idx.co.id/Portals/0/StaticData/ListedCompanies/Corporate_Actions/New_Info_JSX/Jenis_Informasi/01_Laporan_Keuangan/02_Soft_Copy_Laporan_Keuangan//Laporan%%20Keuangan%%20Tahun%%20%s/%s/%s/%s", cfg.Download.Year, modePeriod, stockName, filename) // Fixed double slash
+		url := fmt.Sprintf("https://www.idx.co.id/Portals/0/StaticData/ListedCompanies/Corporate_Actions/New_Info_JSX/Jenis_Informasi/01_Laporan_Keuangan/02_Soft_Copy_Laporan_Keuangan//Laporan%%20Keuangan%%20Tahun%%20%s/%s/%s/%s", cfg.Download.Year, modePeriod, stockName, filename)
 		filePath := filepath.Join(cfg.Paths.DownloadDir, filename)
 
-		if err := downloadFile(url, filePath, cfg, ctx, logger); err != nil {
+		if err := downloadFile(url, filePath, cfg, ctx, driver, logger); err != nil {
 			logger.Error("Failed to download file", zap.String("stock", stockName), zap.Error(err))
-			// Continue to next stock instead of canceling everything
 			continue
 		}
 		downloadedStocks = append(downloadedStocks, stockName)

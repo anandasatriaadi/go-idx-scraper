@@ -2,8 +2,9 @@ package mongo
 
 import (
 	"context"
+	"time"
 
-	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/news"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/news"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -23,6 +24,11 @@ func NewNewsRepository(db *mongo.Database) news.Repository {
 
 // Create inserts a single News
 func (r *NewsRepository) Create(ctx context.Context, model *news.News) error {
+	now := time.Now()
+	if model.CreatedAt.IsZero() {
+		model.CreatedAt = now
+	}
+	model.UpdatedAt = now
 	_, err := r.collection.InsertOne(ctx, model)
 	return err
 }
@@ -54,6 +60,25 @@ func (r *NewsRepository) FindAll(ctx context.Context, filter any, opts ...option
 
 // UpdateByID updates a document by ID
 func (r *NewsRepository) UpdateByID(ctx context.Context, id bson.ObjectID, update any) error {
-	_, err := r.collection.UpdateOne(ctx, bson.M{"_id": id}, update)
+	var updateDoc bson.M
+	switch v := update.(type) {
+	case bson.M:
+		updateDoc = v
+	case map[string]interface{}:
+		updateDoc = bson.M(v)
+	default:
+		// If it's something else, we might not be able to easily add UpdatedAt
+		// But for now let's assume it's one of the above or we just pass it through
+		_, err := r.collection.UpdateOne(ctx, bson.M{"_id": id}, update)
+		return err
+	}
+
+	if updateDoc["$set"] == nil {
+		updateDoc["$set"] = bson.M{}
+	}
+	setMap := updateDoc["$set"].(bson.M)
+	setMap["updated_at"] = time.Now()
+
+	_, err := r.collection.UpdateOne(ctx, bson.M{"_id": id}, updateDoc)
 	return err
 }

@@ -20,3 +20,7 @@ download:
   month_period: 3
 
 openrouter_api_key: your_api_key_here
+
+browser:
+  headless: true
+  chromedriver_path: /usr/local/bin/chromedriver

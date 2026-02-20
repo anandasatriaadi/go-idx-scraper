@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
-	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/announcement"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/announcement"
 	"gopkg.in/gomail.v2"
 )
 

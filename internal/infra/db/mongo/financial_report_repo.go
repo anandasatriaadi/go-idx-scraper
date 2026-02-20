@@ -2,8 +2,9 @@ package mongo
 
 import (
 	"context"
+	"time"
 
-	"github.com/anandasatriaadi/go-idx-scraper/internal/domain/finreport"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/finreport"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
@@ -19,6 +20,11 @@ func NewFinancialReportRepository(db *mongo.Database) finreport.Repository {
 }
 
 func (r *FinancialReportRepository) Create(ctx context.Context, model *finreport.FinancialReport) error {
+	now := time.Now()
+	if model.CreatedAt.IsZero() {
+		model.CreatedAt = now
+	}
+	model.UpdatedAt = now
 	_, err := r.collection.InsertOne(ctx, model)
 	return err
 }

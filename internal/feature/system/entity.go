@@ -9,6 +9,8 @@ import (
 )
 
 type LastRun struct {
+	CreatedAt  time.Time     `bson:"createdAt" json:"createdAt"`
+	UpdatedAt  time.Time     `bson:"updatedAt" json:"updatedAt"`
 	LastRunAt  time.Time     `bson:"lastRunAt" json:"lastRunAt"`
 	Metadata   bson.M        `bson:"metadata,omitempty" json:"metadata,omitempty"`
 	ScriptName string        `bson:"scriptName" json:"scriptName"`
