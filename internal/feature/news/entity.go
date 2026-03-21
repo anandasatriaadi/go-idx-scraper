@@ -20,9 +20,15 @@ type News struct {
 	ID        bson.ObjectID `bson:"_id,omitempty" json:"id"`
 }
 
+// Port: Repository defines data persistence interface (Output Port)
 type Repository interface {
 	Create(ctx context.Context, news *News) error
 	FindAll(ctx context.Context, filter any, opts ...options.Lister[options.FindOptions]) ([]*News, error)
 	FindByID(ctx context.Context, id bson.ObjectID) (*News, error)
 	UpdateByID(ctx context.Context, id bson.ObjectID, update any) error
+}
+
+// Port: Scraper defines news scraping interface (Input Port/External Service)
+type Scraper interface {
+	Scrape(ctx context.Context, startDate, endDate time.Time, onNewsFound func(*News) error) error
 }

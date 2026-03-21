@@ -4,6 +4,15 @@
 CONFIG_PATH ?= config/config.yml
 FLAGS ?= 
 
+# Build target OS/Arch
+GOOS ?= $(shell go env GOOS)
+GOARCH ?= $(shell go env GOARCH)
+
+ifeq ($(IS_LINUX),1)
+	GOOS = linux
+	GOARCH = amd64
+endif
+
 all: build
 
 help:
@@ -20,15 +29,16 @@ help:
 	@echo "Options:"
 	@echo "  CONFIG_PATH=<path>  - Specify config file path (default: config/config.yml)"
 	@echo "  FLAGS=\"<flags>\"    - Pass additional flags to the command (e.g., FLAGS=\"--no-headless\")"
+	@echo "  IS_LINUX=1         - Build for Linux x86_64"
 
 build:
-	@echo "Building binaries..."
+	@echo "Building binaries for $(GOOS)/$(GOARCH)..."
 	@mkdir -p bin
-	go build -o bin/scraper ./cmd/scraper/main.go
-	go build -o bin/announcement ./cmd/announcement/main.go
-	go build -o bin/issuer ./cmd/issuer/main.go
-	go build -o bin/downloader ./cmd/downloader/main.go
-	go build -o bin/server ./cmd/server/main.go
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -ldflags="-s -w" -o bin/scraper ./cmd/scraper/main.go
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -ldflags="-s -w" -o bin/announcement ./cmd/announcement/main.go
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -ldflags="-s -w" -o bin/issuer ./cmd/issuer/main.go
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -ldflags="-s -w" -o bin/downloader ./cmd/downloader/main.go
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -ldflags="-s -w" -o bin/server ./cmd/server/main.go
 
 scraper:
 	go run ./cmd/scraper/main.go --config $(CONFIG_PATH) $(FLAGS)

@@ -1,10 +1,18 @@
+// Package idx implements the IDX API adapter for the announcement feature.
+// It serves as an adapter (External Service implementation) in the Hexagonal Architecture,
+// implementing the IDXDataProvider port defined in the announcement feature.
 package idx
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/announcement"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/common"
+	"github.com/tebeka/selenium"
+	"go.uber.org/zap"
 )
 
 type AnnouncementResponse struct {
@@ -74,5 +82,60 @@ func ParseAPIResponse(apiResp APIResponse) ([]*announcement.Announcement, error)
 		}
 		announcements = append(announcements, ann)
 	}
+	return announcements, nil
+}
+
+// IDXProvider implements the announcement.IDXDataProvider port.
+// This is an External Service Adapter in Hexagonal Architecture.
+type IDXProvider struct {
+	logger *zap.Logger
+	driver selenium.WebDriver
+}
+
+// NewIDXProvider creates a new IDX provider adapter.
+func NewIDXProvider(logger *zap.Logger, driver selenium.WebDriver) announcement.IDXDataProvider {
+	return &IDXProvider{
+		logger: logger,
+		driver: driver,
+	}
+}
+
+// Fetch retrieves announcements from the IDX API for a given date range.
+func (p *IDXProvider) Fetch(ctx context.Context, dateFrom, dateTo string) ([]*announcement.Announcement, error) {
+	url := fmt.Sprintf(
+		`https://www.idx.co.id/primary/ListedCompany/GetAnnouncement?kodeEmiten=&emitenType=s&indexFrom=0&pageSize=500&dateFrom=%s&dateTo=%s&lang=id&keyword=`,
+		dateFrom, dateTo,
+	)
+
+	p.logger.Info("Fetching announcements from IDX", zap.String("url", url))
+
+	if err := p.driver.Get(url); err != nil {
+		return nil, fmt.Errorf("failed to navigate to IDX: %w", err)
+	}
+
+	time.Sleep(1 * time.Second)
+
+	body, err := p.driver.FindElement(selenium.ByTagName, "body")
+	if err != nil {
+		return nil, fmt.Errorf("failed to find body element: %w", err)
+	}
+
+	data, err := body.Text()
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract text from body: %w", err)
+	}
+
+	var resp APIResponse
+	if err := json.Unmarshal([]byte(data), &resp); err != nil {
+		p.logger.Error("Failed to unmarshal API response", zap.Error(err), zap.String("data", data))
+		return nil, fmt.Errorf("failed to unmarshal API response: %w", err)
+	}
+
+	announcements, err := ParseAPIResponse(resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse API response: %w", err)
+	}
+
+	p.logger.Info("Successfully fetched announcements", zap.Int("count", len(announcements)))
 	return announcements, nil
 }

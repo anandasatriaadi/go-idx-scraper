@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	br "github.com/anandasatriaadi/go-idx-scraper/internal/browser"
@@ -17,22 +19,29 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Printf("Application failed: %v", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	var configPath string
 	var noHeadless bool
 	flag.StringVar(&configPath, "config", "config/config.yml", "Path to configuration file")
 	flag.BoolVar(&noHeadless, "no-headless", false, "Disable headless mode for browser")
 	flag.Parse()
 
-	logger, err := zap.NewProduction()
+	logger, err := helper.NewLogger("issuer")
 	if err != nil {
-		log.Fatalf("Failed to create logger: %v", err)
+		return fmt.Errorf("failed to create logger: %w", err)
 	}
 	defer logger.Sync()
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		logger.Error("Failed to read config", zap.Error(err))
-		os.Exit(1)
+		return err
 	}
 
 	if noHeadless {
@@ -42,21 +51,28 @@ func main() {
 	browser, err := br.SetupSelenium(cfg)
 	if err != nil {
 		logger.Error("Failed to setup selenium", zap.Error(err))
-		os.Exit(1)
+		return err
 	}
 	defer browser.Close()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		sig := <-sigChan
+		logger.Info("Received shutdown signal", zap.String("signal", sig.String()))
+	}()
 
 	currIssuerList, err := helper.LoadCurrent(cfg.Paths.IssuerList, logger)
 	if err != nil {
 		logger.Error("Failed to load current issuer list", zap.Error(err))
-		os.Exit(1)
+		return err
 	}
 	currIssuerSet := stringSliceToSet(currIssuerList)
 
 	jsonData, err := fetchStocks(browser.Driver)
 	if err != nil {
-		logger.Error("Failed to fetch stocks", zap.Error(err))
-		os.Exit(1)
+		logger.Warn("Failed to fetch stocks", zap.Error(err))
+		return err
 	}
 	for _, s := range jsonData {
 		if !currIssuerSet[s.Code] {
@@ -67,9 +83,10 @@ func main() {
 
 	if err := saveIssuer(cfg.Paths.IssuerList, currIssuerList); err != nil {
 		logger.Error("Failed to save issuer list", zap.Error(err))
-		os.Exit(1)
+		return err
 	}
 	logger.Info("Issuer list updated", zap.Int("total", len(currIssuerList)))
+	return nil
 }
 
 func stringSliceToSet(strs []string) map[string]bool {

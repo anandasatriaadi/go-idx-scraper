@@ -12,6 +12,7 @@ import (
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/announcement"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/finreport"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/news"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/db/mongo"
 	handlers "github.com/anandasatriaadi/go-idx-scraper/internal/presentation/http"
 	"github.com/go-chi/chi/v5"
@@ -26,7 +27,10 @@ func main() {
 	flag.StringVar(&configPath, "config", "config/config.yml", "Path to configuration file")
 	flag.Parse()
 
-	logger, _ := zap.NewDevelopment()
+	logger, err := helper.NewLogger("server")
+	if err != nil {
+		log.Fatalf("Failed to initialize logger: %v", err)
+	}
 	defer logger.Sync()
 
 	cfg, err := config.Load(configPath)

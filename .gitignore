@@ -1,2 +1,3 @@
 *.yml
 !example_config.yml
+bin/

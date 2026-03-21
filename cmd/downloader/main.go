@@ -21,29 +21,36 @@ import (
 )
 
 const (
-	DownloadTimeout = 30 * time.Second
-	PollInterval    = 500 * time.Millisecond
+	maxServerErrorRetry = 3
+	retryDelay          = 5 * time.Second
 )
 
 var errorTitles = []string{"404", "document", "503", "attention required", "just a moment"}
 
 func main() {
+	if err := run(); err != nil {
+		log.Printf("Application failed: %v", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	var configPath string
 	var noHeadless bool
 	flag.StringVar(&configPath, "config", "config/config.yml", "Path to configuration file")
 	flag.BoolVar(&noHeadless, "no-headless", false, "Disable headless mode for browser")
 	flag.Parse()
 
-	logger, err := zap.NewDevelopment()
+	logger, err := helper.NewLogger("downloader")
 	if err != nil {
-		log.Fatalf("Failed to initialize logger: %v", err)
+		return fmt.Errorf("failed to initialize logger: %w", err)
 	}
 	defer logger.Sync()
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		logger.Error("Failed to read config", zap.Error(err))
-		return
+		return err
 	}
 
 	if noHeadless {
@@ -53,7 +60,7 @@ func main() {
 	browser, err := br.SetupSelenium(cfg)
 	if err != nil {
 		logger.Error("Failed to setup selenium", zap.Error(err))
-		return
+		return err
 	}
 	defer browser.Close()
 
@@ -61,7 +68,7 @@ func main() {
 	defer cancel()
 
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		sig := <-sigChan
 		logger.Info("Received shutdown signal", zap.String("signal", sig.String()))
@@ -71,9 +78,10 @@ func main() {
 	issuerList, err := helper.LoadCurrent(cfg.Paths.IssuerList, logger)
 	if err != nil {
 		logger.Error("Failed to load issuer list", zap.Error(err))
-		return
+		return err
 	}
 	processStocks(issuerList, cfg, ctx, browser.Driver, logger)
+	return nil
 }
 
 func preparePeriodParams(cfg *config.Config, logger *zap.Logger) (period string, modePeriod string) {
@@ -119,68 +127,69 @@ func downloadFile(url, filePath string, cfg *config.Config, ctx context.Context,
 		return err
 	}
 
-	timeout := time.After(DownloadTimeout)
-	ticker := time.NewTicker(PollInterval)
-	defer ticker.Stop()
-
-waitLoop:
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Info("Shutdown requested during download wait")
-			os.Remove(filePath)
-			return ctx.Err()
-		case <-timeout:
-			logger.Warn("Download timed out", zap.String("file", filePath))
-			return fmt.Errorf("download timeout")
-		case <-ticker.C:
-			if _, err := os.Stat(filePath); err == nil {
-				logger.Info("Download completed", zap.String("file", filePath))
-				break waitLoop
-			}
-		}
+	if err := driver.Get("data:,"); err != nil {
+		logger.Warn("Failed to navigate to blank page", zap.Error(err))
 	}
+
 	return nil
 }
 
 func processStocks(issuerList []string, cfg *config.Config, ctx context.Context, driver selenium.WebDriver, logger *zap.Logger) {
-	period, modePeriod := preparePeriodParams(cfg, logger)
+	period, modePeriodDefault := preparePeriodParams(cfg, logger)
 
-	var downloadedStocks []string
-	for _, stockName := range issuerList {
-		select {
-		case <-ctx.Done():
-			logger.Info("Shutdown requested during stock processing")
-			return
-		default:
+	serverErrorOccurred := true
+	loopCount := 0
+
+	for serverErrorOccurred && loopCount < maxServerErrorRetry {
+		loopCount++
+		serverErrorOccurred = false
+
+		for _, stockName := range issuerList {
+			select {
+			case <-ctx.Done():
+				logger.Info("Shutdown requested during stock processing")
+				return
+			default:
+			}
+
+			var filename string
+			var modePeriod string
+			if cfg.Download.Mode == "AUDIT" {
+				filename = fmt.Sprintf("FinancialStatement-%s-Tahunan-%s.xlsx", cfg.Download.Year, stockName)
+				modePeriod = "Audit"
+			} else {
+				filename = fmt.Sprintf("FinancialStatement-%s-%s-%s.xlsx", cfg.Download.Year, period, stockName)
+				modePeriod = modePeriodDefault
+			}
+
+			checkPath := filepath.Join(cfg.Paths.CheckDir, filename)
+			filePath := filepath.Join(cfg.Paths.DownloadDir, filename)
+			if _, err := os.Stat(checkPath); err == nil {
+				continue
+			}
+			if _, err := os.Stat(filePath); err == nil {
+				continue
+			}
+
+			logger.Info("Processing stock", zap.String("stock", stockName))
+			url := fmt.Sprintf("https://www.idx.co.id/Portals/0/StaticData/ListedCompanies/Corporate_Actions/New_Info_JSX/Jenis_Informasi/01_Laporan_Keuangan/02_Soft_Copy_Laporan_Keuangan//Laporan%%20Keuangan%%20Tahun%%20%s/%s/%s/%s", cfg.Download.Year, modePeriod, stockName, filename)
+
+			if err := downloadFile(url, filePath, cfg, ctx, driver, logger); err != nil {
+				if err.Error() == "server error" {
+					serverErrorOccurred = true
+				}
+				logger.Warn("Failed to trigger download", zap.String("stock", stockName), zap.String("err", err.Error()))
+				continue
+			}
 		}
 
-		logger.Info("Processing stock", zap.String("stock", stockName))
-
-		var filename string
-		if cfg.Download.Mode == "AUDIT" {
-			filename = fmt.Sprintf("FinancialStatement-%s-Tahunan-%s.xlsx", cfg.Download.Year, stockName)
-			modePeriod = "Audit"
-		} else {
-			filename = fmt.Sprintf("FinancialStatement-%s-%s-%s.xlsx", cfg.Download.Year, period, stockName)
+		if serverErrorOccurred && loopCount < maxServerErrorRetry {
+			logger.Info("Server error occurred, retrying", zap.Int("attempt", loopCount))
+			time.Sleep(retryDelay)
 		}
-
-		checkPath := filepath.Join(cfg.Paths.CheckDir, filename)
-		if _, err := os.Stat(checkPath); err == nil {
-			logger.Info("Skip - File Exists", zap.String("stock", stockName), zap.String("file", filename))
-			continue
-		}
-
-		url := fmt.Sprintf("https://www.idx.co.id/Portals/0/StaticData/ListedCompanies/Corporate_Actions/New_Info_JSX/Jenis_Informasi/01_Laporan_Keuangan/02_Soft_Copy_Laporan_Keuangan//Laporan%%20Keuangan%%20Tahun%%20%s/%s/%s/%s", cfg.Download.Year, modePeriod, stockName, filename)
-		filePath := filepath.Join(cfg.Paths.DownloadDir, filename)
-
-		if err := downloadFile(url, filePath, cfg, ctx, driver, logger); err != nil {
-			logger.Error("Failed to download file", zap.String("stock", stockName), zap.Error(err))
-			continue
-		}
-		downloadedStocks = append(downloadedStocks, stockName)
 	}
 
+	downloadedStocks := helper.FindDownloadedStocks(cfg)
 	if len(downloadedStocks) == 0 {
 		logger.Info("No new files downloaded")
 		return

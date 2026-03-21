@@ -19,6 +19,11 @@ func NewService(repo Repository, logger *zap.Logger) *Service {
 	}
 }
 
+// Verify service methods exist for proper initialization
+func (s *Service) Logger() *zap.Logger {
+	return s.logger
+}
+
 func (s *Service) Create(ctx context.Context, a *Announcement) error {
 	return s.repo.Create(ctx, a)
 }

@@ -47,6 +47,14 @@ func SetupSelenium(cfg *config.Config) (*SeleniumBrowser, error) {
 			"--disable-extensions",
 			"--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
 		},
+		Prefs: map[string]interface{}{
+			"download.default_directory":       cfg.Paths.DownloadDir,
+			"download.prompt_for_download":     false,
+			"download.directory_upgrade":       true,
+			"download.extensions_to_open":      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+			"credentials_enable_service":       false,
+			"profile.password_manager_enabled": false,
+		},
 	}
 
 	if cfg.Browser.Headless {

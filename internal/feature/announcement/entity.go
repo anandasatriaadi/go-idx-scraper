@@ -29,9 +29,15 @@ type Announcement struct {
 	Attachments       []common.Attachment `json:"attachments" bson:"attachments"`
 }
 
+// Port: Repository defines data persistence interface (Output Port)
 type Repository interface {
 	Create(ctx context.Context, announcement *Announcement) error
 	FindAll(ctx context.Context, filter any, opts ...options.Lister[options.FindOptions]) ([]*Announcement, error)
 	FindByID(ctx context.Context, id string) (*Announcement, error)
 	Exists(ctx context.Context, id string) (bool, error)
+}
+
+// Port: IDXDataProvider defines interface for IDX API data fetching and parsing (External Service)
+type IDXDataProvider interface {
+	Fetch(ctx context.Context, dateFrom, dateTo string) ([]*Announcement, error)
 }

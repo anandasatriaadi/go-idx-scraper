@@ -94,13 +94,23 @@ type Article struct {
 
 func (s *Scraper) Scrape(ctx context.Context, startDate, endDate time.Time, onNewsFound func(*news.News) error) error {
 	for d := startDate; !d.After(endDate); d = d.AddDate(0, 0, 1) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		s.logger.Info("Fetching articles for date", zap.Time("date", d))
 
 		perPage := 0
 		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
 			htmlContent, err := s.fetchArticleListHTML(ctx, d, perPage)
 			if err != nil {
-				s.logger.Error("Failed to fetch article list HTML", zap.Time("date", d), zap.Int("per_page", perPage), zap.Error(err))
+				s.logger.Warn("Failed to fetch article list HTML", zap.Time("date", d), zap.Int("per_page", perPage), zap.Error(err))
 				break
 			}
 
@@ -116,7 +126,7 @@ func (s *Scraper) Scrape(ctx context.Context, startDate, endDate time.Time, onNe
 
 				articleHtml, err := s.fetchArticleContent(ctx, art.Link)
 				if err != nil {
-					s.logger.Error("Failed to fetch article content", zap.String("link", art.Link), zap.Error(err))
+					s.logger.Warn("Failed to fetch article content", zap.String("link", art.Link), zap.Error(err))
 					continue
 				}
 
@@ -200,7 +210,7 @@ func (s *Scraper) parseArticlesFromHTML(htmlCode string) []Article {
 	reader := strings.NewReader(htmlCode)
 	doc, err := goquery.NewDocumentFromReader(reader)
 	if err != nil {
-		s.logger.Error("Failed to parse HTML", zap.Error(err))
+		s.logger.Warn("Failed to parse HTML", zap.Error(err))
 		return nil
 	}
 
@@ -291,7 +301,7 @@ func (p *HTMLToMarkdownProcessor) filterArticleContent(htmlContent string) strin
 	reader := strings.NewReader(htmlContent)
 	doc, err := goquery.NewDocumentFromReader(reader)
 	if err != nil {
-		p.logger.Error("Failed to parse article HTML for cleaning", zap.Error(err))
+		p.logger.Warn("Failed to parse article HTML for cleaning", zap.Error(err))
 		return htmlContent // Fallback to original
 	}
 
