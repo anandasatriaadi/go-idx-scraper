@@ -41,10 +41,15 @@ func SetupSelenium(cfg *config.Config) (*SeleniumBrowser, error) {
 	chromeCaps := chrome.Capabilities{
 		Path: "",
 		Args: []string{
+			"--headless",
 			"--no-sandbox",
 			"--disable-dev-shm-usage",
 			"--disable-gpu",
 			"--disable-extensions",
+			"--remote-debugging-port=9222",
+			"--log-level=1",
+			"--safebrowsing-disable-download-protection",
+			"--safebrowsing-disable-extension-blacklist",
 			"--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
 		},
 		Prefs: map[string]interface{}{
@@ -55,6 +60,7 @@ func SetupSelenium(cfg *config.Config) (*SeleniumBrowser, error) {
 			"credentials_enable_service":       false,
 			"profile.password_manager_enabled": false,
 		},
+		ExcludeSwitches: []string{"enable-automation"},
 	}
 
 	if cfg.Browser.Headless {

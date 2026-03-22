@@ -145,6 +145,11 @@ func processStocks(issuerList []string, cfg *config.Config, ctx context.Context,
 		serverErrorOccurred = false
 
 		for _, stockName := range issuerList {
+			stockName = strings.TrimSpace(stockName)
+			if stockName == "" {
+				continue
+			}
+
 			select {
 			case <-ctx.Done():
 				logger.Info("Shutdown requested during stock processing")
