@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"regexp"
 	"runtime"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -20,12 +19,13 @@ import (
 	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/db/mongo"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/idx"
-	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	mongoDriver "go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.uber.org/zap"
 )
+
+var nonAlphaRegex = regexp.MustCompile(`[^a-zA-Z]`)
 
 func main() {
 	if err := run(); err != nil {
@@ -82,9 +82,12 @@ func run() error {
 		return err
 	}
 
-	dbInstance := db.Database(viper.GetString("database.db_name"))
+	dbInstance := db.Database(cfg.Database.DbName)
 	lRepo := mongo.NewSystemRepository(dbInstance)
 	aRepo := mongo.NewAnnouncementRepository(dbInstance)
+	fRepo := mongo.NewFinancialReportRepository(dbInstance)
+
+	annSvc := announcement.NewService(aRepo, fRepo, logger)
 
 	// Initialize the IDXProvider adapter (External Service)
 	idxProvider := idx.NewIDXProvider(logger, browser.Driver)
@@ -134,33 +137,26 @@ func run() error {
 		if ann.CreatedDate == nil {
 			continue
 		}
-		annStr := ann.CreatedDate.Format("20060102150405")
-		annInt, _ := strconv.Atoi(annStr)
-		var latestInt int
-		if latestDate != nil {
-			latestStr := latestDate.Format("20060102150405")
-			latestInt, _ = strconv.Atoi(latestStr)
-		}
-		if (latestDate == nil || annInt > latestInt) && !exists[ann.ID] {
+		if (latestDate == nil || ann.CreatedDate.After(*latestDate)) && !exists[ann.ID] {
 			logger.Info("New announcement found", zap.String("ID", ann.ID), zap.Time("CreatedDate", *ann.CreatedDate))
 			filtered = append(filtered, ann)
 		}
 	}
 	logger.Info("Announcements filtered", zap.Int("new", len(filtered)))
 
-	if len(filtered) > 0 {
+	if len(filtered) == 0 {
+		logger.Info("No new announcements to create")
+	} else {
 		for _, f := range filtered {
 			if err := aRepo.Create(ctx, f); err != nil {
 				logger.Error("Failed to create announcement", zap.String("ID", f.ID), zap.Error(err))
 			}
+			if err := annSvc.ProcessFinancialReportAnnouncement(ctx, f); err != nil {
+				logger.Error("Failed to process finreport announcement", zap.String("ID", f.ID), zap.Error(err))
+			}
 		}
 		logger.Info("Announcements created", zap.Int("count", len(filtered)))
-	} else {
-		logger.Info("No new announcements to create")
-		goto finish
-	}
 
-	if len(filtered) > 0 {
 		latestAnnDocs, err := aRepo.FindAll(ctx, bson.M{}, options.Find().SetSort(bson.M{"created_date": -1}).SetLimit(1))
 		if err != nil {
 			logger.Error("Failed to get latest announcement", zap.Error(err))
@@ -169,9 +165,7 @@ func run() error {
 		if len(latestAnnDocs) > 0 {
 			latestDate = latestAnnDocs[0].CreatedDate
 		}
-	}
 
-	{
 		filter := bson.M{"scriptName": "idx-announcement"}
 		update := bson.M{"$set": bson.M{
 			"scriptName": "idx-announcement",
@@ -194,14 +188,13 @@ func run() error {
 		var emailFiltered []*announcement.Announcement
 		for _, ann := range filtered {
 			if ann.JudulPengumuman != nil {
-				re := regexp.MustCompile(`[^a-zA-Z]`)
-				normalizedTitle := re.ReplaceAllString(*ann.JudulPengumuman, "")
+				normalizedTitle := nonAlphaRegex.ReplaceAllString(*ann.JudulPengumuman, "")
 				normalizedTitle = strings.TrimSpace(normalizedTitle)
 				normalizedTitle = strings.ToLower(normalizedTitle)
 
 				excluded := false
 				for _, pattern := range excludedTitles {
-					if regexp.MustCompile(`^` + pattern).MatchString(normalizedTitle) {
+					if strings.HasPrefix(normalizedTitle, pattern) {
 						excluded = true
 						logger.Info("Announcement excluded from email", zap.String("title", *ann.JudulPengumuman))
 						break
@@ -247,7 +240,6 @@ func run() error {
 		}
 	}
 
-finish:
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 	logger.Info("Memory usage", zap.Float64("MB", float64(mem.Alloc)/(1024*1024)))

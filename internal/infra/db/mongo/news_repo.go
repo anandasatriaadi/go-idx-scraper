@@ -73,10 +73,11 @@ func (r *NewsRepository) UpdateByID(ctx context.Context, id bson.ObjectID, updat
 		return err
 	}
 
-	if updateDoc["$set"] == nil {
-		updateDoc["$set"] = bson.M{}
+	setMap, ok := updateDoc["$set"].(bson.M)
+	if !ok {
+		setMap = bson.M{}
+		updateDoc["$set"] = setMap
 	}
-	setMap := updateDoc["$set"].(bson.M)
 	setMap["updated_at"] = time.Now()
 
 	_, err := r.collection.UpdateOne(ctx, bson.M{"_id": id}, updateDoc)

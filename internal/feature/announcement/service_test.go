@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/finreport"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.uber.org/zap"
 )
@@ -26,9 +27,25 @@ func (m *MockRepository) Exists(ctx context.Context, id string) (bool, error) {
 	return m.ExistsRes, m.Err
 }
 
+type MockFinreportRepository struct{}
+
+func (m *MockFinreportRepository) Create(ctx context.Context, r *finreport.FinancialReport) error {
+	return nil
+}
+func (m *MockFinreportRepository) FindAll(ctx context.Context, filter any, opts ...options.Lister[options.FindOptions]) ([]*finreport.FinancialReport, error) {
+	return nil, nil
+}
+func (m *MockFinreportRepository) FindOne(ctx context.Context, filter any) (*finreport.FinancialReport, error) {
+	return nil, nil
+}
+func (m *MockFinreportRepository) UpdateOne(ctx context.Context, filter, update any) error {
+	return nil
+}
+
 func TestService_Create(t *testing.T) {
 	mock := &MockRepository{}
-	svc := NewService(mock, zap.NewNop())
+	mockFinreport := &MockFinreportRepository{}
+	svc := NewService(mock, mockFinreport, zap.NewNop())
 	err := svc.Create(context.Background(), &Announcement{ID: "1"})
 	if err != nil {
 		t.Errorf("Create failed: %v", err)
@@ -37,7 +54,8 @@ func TestService_Create(t *testing.T) {
 
 func TestService_FindAll(t *testing.T) {
 	mock := &MockRepository{Announcements: []*Announcement{{ID: "1"}}}
-	svc := NewService(mock, zap.NewNop())
+	mockFinreport := &MockFinreportRepository{}
+	svc := NewService(mock, mockFinreport, zap.NewNop())
 	res, err := svc.FindAll(context.Background(), nil)
 	if err != nil {
 		t.Errorf("FindAll failed: %v", err)

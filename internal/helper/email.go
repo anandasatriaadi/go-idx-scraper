@@ -3,7 +3,6 @@ package helper
 import (
 	"fmt"
 	"html/template"
-	"log"
 	"sort"
 	"strings"
 	"time"
@@ -11,6 +10,12 @@ import (
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/announcement"
 	"gopkg.in/gomail.v2"
+)
+
+const (
+	stocksPerEmailRow = 4
+	emailMaxRetries   = 3
+	emailRetryDelay   = 5 * time.Second
 )
 
 // getModeText returns the mode text based on config and romanPeriod.
@@ -29,225 +34,162 @@ func buildStockURL(stock string, config *config.Config, romanPeriod string) stri
 	return fmt.Sprintf("https://www.idx.co.id/Portals/0/StaticData/ListedCompanies/Corporate_Actions/New_Info_JSX/Jenis_Informasi/01_Laporan_Keuangan/02_Soft_Copy_Laporan_Keuangan//Laporan%%20Keuangan%%20Tahun%%20%s/%s/%s/FinancialStatement-%s-%s-%s.xlsx", config.Download.Year, config.Download.Mode, stock, config.Download.Year, romanPeriod, stock)
 }
 
-func GenerateNewReportEmail(stocks []string, romanPeriod string, config *config.Config) string {
+func GenerateNewReportEmail(newStocks, updatedStocks []string, config *config.Config) (string, error) {
 	now := time.Now()
-	modeText := getModeText(config, romanPeriod)
 
-	// Prepare data for template
 	type StockData struct {
 		URL  string
 		Name string
 	}
 
-	var stockList []StockData
-	for _, stock := range stocks {
-		stockList = append(stockList, StockData{
-			URL:  buildStockURL(stock, config, romanPeriod),
+	var newStockList []stockEmailItem
+	for _, stock := range newStocks {
+		newStockList = append(newStockList, stockEmailItem{
+			URL:  buildStockURL(stock, config, ""),
 			Name: stock,
 		})
 	}
 
-	// Group stocks into rows of 4
-	var rows [][]StockData
-	var end int
-	for i := 0; i < len(stockList); i += 4 {
-		end = i + 4
-		end = min(len(stockList), end)
-		rows = append(rows, stockList[i:end])
+	var updatedStockList []stockEmailItem
+	for _, stock := range updatedStocks {
+		updatedStockList = append(updatedStockList, stockEmailItem{
+			URL:  buildStockURL(stock, config, ""),
+			Name: stock,
+		})
 	}
 
-	data := struct {
-		ModeText  string
-		Year      string
-		DateTime  string
-		StockRows [][]StockData
-		HasStocks bool
-	}{
-		ModeText:  modeText,
-		Year:      config.Download.Year,
-		DateTime:  fmt.Sprintf("%02d/%02d/%d %02d:%02d:%02d", now.Day(), int(now.Month()), now.Year(), now.Hour(), now.Minute(), now.Second()),
-		HasStocks: len(stocks) > 0,
-		StockRows: rows,
+	newRows := groupStocksIntoRows(newStockList)
+	updatedRows := groupStocksIntoRows(updatedStockList)
+
+	data := stockEmailData{
+		NewStocks:        newRows,
+		UpdatedStocks:    updatedRows,
+		HasNewStocks:     len(newStocks) > 0,
+		HasUpdatedStocks: len(updatedStocks) > 0,
+		DateTime:         fmt.Sprintf("%02d/%02d/%d %02d:%02d:%02d", now.Day(), int(now.Month()), now.Year(), now.Hour(), now.Minute(), now.Second()),
 	}
 
 	const htmlTemplate = `
 	<!DOCTYPE html>
 	<html lang="en">
-			<head>
-					<meta charset="UTF-8" />
-					<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-					<title>New Stock Report</title>
-					<style>
-							/* Resets for Email Clients */
-							body {
-									margin: 0;
-									padding: 0;
-									min-width: 100%;
-									background-color: #f0f0f0;
-							}
-							table {
-									border-spacing: 0;
-									font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-									color: #000000;
-							}
-							td {
-									padding: 0;
-							}
-							img {
-									border: 0;
-							}
-							.wrapper {
-									width: 100%;
-									table-layout: fixed;
-									-webkit-text-size-adjust: 100%;
-									-ms-text-size-adjust: 100%;
-							}
-
-							/* Modern Container */
-							.report-card {
-									max-width: 600px;
-									margin: 0 auto;
-									background-color: #ffffff;
-									border: 1px solid #000000;
-									box-shadow: none;
-							}
-
-							/* Utility Classes */
-							.report-header {
-									background-color: #000000;
-									color: #ffffff;
-									padding: 12px 24px;
-									font-size: 14px;
-									font-weight: 800;
-									letter-spacing: 1px;
-									text-transform: uppercase;
-									text-align: center;
-							}
-
-							.date-time {
-									color: #666666;
-									font-size: 11px;
-									font-family: monospace;
-									letter-spacing: -0.5px;
-									text-align: center;
-									margin-bottom: 4px;
-							}
-
-							.subtitle {
-									font-size: 12px;
-									color: #888888;
-									text-align: center;
-									margin-bottom: 16px;
-							}
-
-							.stock-list {
-									display: flex;
-									flex-wrap: wrap;
-							}
-
-							.stock-item {
-									flex: 0 0 25%;
-									border-right: 1px dashed #e0e0e0;
-							}
-
-							.stock-link {
-									display: block;
-									text-decoration: none;
-									color: #000000;
-									padding: 8px 16px;
-									text-align: center;
-									font-weight: 700;
-							}
-
-							.stock-link:hover {
-									color: #444444;
-									text-decoration: underline;
-							}
-
-							.no-stocks {
-									text-align: center;
-									color: #888888;
-									padding: 20px;
-							}
-
-							.footer {
-									color: #767676;
-									text-align: center;
-									margin: 20px 0;
-									font-size: 12px;
-							}
-					</style>
-			</head>
-			<body>
-					<!-- This container simulates the email body -->
-					<div style="background-color: #f0f0f0; padding: 40px 10px">
-							<center class="wrapper">
-									<!-- Global Header -->
-									<div
-											style="max-width: 600px; margin: 0 auto 20px auto; text-align: left"
-									>
-											<h1
-													style="
-															color: #000000;
-															margin: 0;
-															font-size: 24px;
-															font-weight: 800;
-															letter-spacing: -1px;
-													"
-											>
-													ADI FAMILY MARKET<span style="font-weight: 300">WATCH</span>
-											</h1>
-											<p style="margin: 4px 0 0 0; font-size: 12px; color: #666666">
-													New Stock Report
-											</p>
-									</div>
-
-									<!-- Report Content -->
-									<div class="report-card">
-											<div class="report-header">
-													New {{.ModeText}} {{.Year}} Stock Report
-											</div>
-											<div style="padding: 20px 24px">
-													<span class="date-time">{{.DateTime}}</span>
-													<p class="subtitle">
-															Please check Google Drive, files has been minimized and
-															uploaded
-													</p>
-													{{if .HasStocks}}
-													<div class="stock-list">
-															{{range .StockRows}}
-															{{range .}}
-															<div class="stock-item">
-																	<a class="stock-link" href="{{.URL}}">{{.Name}}</a>
-															</div>
-															{{end}}
-															{{end}}
-													</div>
-													{{else}}
-													<p class="no-stocks">No new stocks found.</p>
-													{{end}}
-											</div>
-									</div>
-									<div class="footer">Adi Family Server &copy; 2023</div>
-							</center>
+		<head>
+			<meta charset="UTF-8" />
+			<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+			<title>Stock Report Update</title>
+			<style>
+				body { margin: 0; padding: 0; min-width: 100%; background-color: #f0f0f0; }
+				table { border-spacing: 0; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; color: #000000; }
+				td { padding: 0; }
+				.wrapper { width: 100%; table-layout: fixed; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+				.report-card { max-width: 600px; margin: 0 auto 20px auto; background-color: #ffffff; border: 1px solid #000000; }
+				.report-header { background-color: #000000; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; text-align: center; }
+				.report-header.updated { background-color: #c41e3a; }
+				.date-time { color: #666666; font-size: 11px; font-family: monospace; letter-spacing: -0.5px; text-align: center; margin-bottom: 4px; }
+				.stock-list { display: flex; flex-wrap: wrap; }
+				.stock-item { flex: 0 0 25%; border-right: 1px dashed #e0e0e0; }
+				.stock-link { display: block; text-decoration: none; color: #000000; padding: 8px 16px; text-align: center; font-weight: 700; }
+				.stock-link:hover { color: #444444; text-decoration: underline; }
+				.no-stocks { text-align: center; color: #888888; padding: 20px; }
+				.footer { color: #767676; text-align: center; margin: 20px 0; font-size: 12px; }
+			</style>
+		</head>
+		<body>
+			<div style="background-color: #f0f0f0; padding: 40px 10px">
+				<center class="wrapper">
+					<div style="max-width: 600px; margin: 0 auto 20px auto; text-align: left">
+						<h1 style="color: #000000; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -1px;">
+							ADI FAMILY MARKET<span style="font-weight: 300">WATCH</span>
+						</h1>
+						<p style="margin: 4px 0 0 0; font-size: 12px; color: #666666">Stock Report Update</p>
 					</div>
-			</body>
+
+					{{if .HasNewStocks}}
+					<div class="report-card">
+						<div class="report-header">New Reports</div>
+						<div style="padding: 20px 24px">
+							<span class="date-time">{{.DateTime}}</span>
+							<div class="stock-list">
+								{{range .NewStocks}}
+								{{range .}}
+								<div class="stock-item">
+									<a class="stock-link" href="{{.URL}}">{{.Name}}</a>
+								</div>
+								{{end}}
+								{{end}}
+							</div>
+						</div>
+					</div>
+					{{end}}
+
+					{{if .HasUpdatedStocks}}
+					<div class="report-card">
+						<div class="report-header updated">Updated Reports (Revised/Audited)</div>
+						<div style="padding: 20px 24px">
+							<span class="date-time">{{.DateTime}}</span>
+							<div class="stock-list">
+								{{range .UpdatedStocks}}
+								{{range .}}
+								<div class="stock-item">
+									<a class="stock-link" href="{{.URL}}">{{.Name}}</a>
+								</div>
+								{{end}}
+								{{end}}
+							</div>
+						</div>
+					</div>
+					{{end}}
+
+					{{if and (not .HasNewStocks) (not .HasUpdatedStocks)}}
+					<div class="report-card">
+						<div style="padding: 20px">
+							<p class="no-stocks">No new stocks found.</p>
+						</div>
+					</div>
+					{{end}}
+
+					<div class="footer">Adi Family Server</div>
+				</center>
+			</div>
+		</body>
 	</html>
 	`
 
 	tmpl, err := template.New("email").Parse(htmlTemplate)
 	if err != nil {
-		log.Printf("Error parsing email template: %v", err)
-		return ""
+		return "", fmt.Errorf("error parsing email template: %w", err)
 	}
 
 	var buf strings.Builder
 	if err := tmpl.Execute(&buf, data); err != nil {
-		log.Printf("Error executing email template: %v", err)
-		return ""
+		return "", fmt.Errorf("error executing email template: %w", err)
 	}
 
-	return buf.String()
+	return buf.String(), nil
+}
+
+type stockEmailData struct {
+	NewStocks        [][]stockEmailItem
+	UpdatedStocks    [][]stockEmailItem
+	HasNewStocks     bool
+	HasUpdatedStocks bool
+	DateTime         string
+}
+
+type stockEmailItem struct {
+	URL  string
+	Name string
+}
+
+func groupStocksIntoRows(stockList []stockEmailItem) [][]stockEmailItem {
+	var rows [][]stockEmailItem
+	for i := 0; i < len(stockList); i += stocksPerEmailRow {
+		end := i + stocksPerEmailRow
+		if end > len(stockList) {
+			end = len(stockList)
+		}
+		rows = append(rows, stockList[i:end])
+	}
+	return rows
 }
 
 func SendMail(content string, romanPeriod string, config *config.Config) error {
@@ -268,16 +210,13 @@ func SendMail(content string, romanPeriod string, config *config.Config) error {
 
 	d := gomail.NewDialer("smtp.gmail.com", 587, config.Mail.Username, config.Mail.Password)
 
-	// Retry sending the email up to 3 times
-	for i := range 3 {
+	for i := range emailMaxRetries {
 		if err := d.DialAndSend(m); err != nil {
-			log.Printf("Error sending email (attempt %d): %v", i+1, err)
-			if i == 2 {
-				return fmt.Errorf("failed to send email after 3 attempts")
+			if i == emailMaxRetries-1 {
+				return fmt.Errorf("failed to send email after %d attempts: %w", emailMaxRetries, err)
 			}
-			time.Sleep(5 * time.Second) // Wait 5 seconds before retrying
+			time.Sleep(emailRetryDelay)
 		} else {
-			fmt.Println("Mail Sent")
 			return nil
 		}
 	}
@@ -548,16 +487,13 @@ func SendAnnouncementMail(content string, config *config.Config) error {
 
 	d := gomail.NewDialer("smtp.gmail.com", 587, config.Mail.Username, config.Mail.Password)
 
-	// Retry sending the email up to 3 times
-	for i := range 3 {
+	for i := range emailMaxRetries {
 		if err := d.DialAndSend(m); err != nil {
-			log.Printf("Error sending announcement email (attempt %d): %v", i+1, err)
-			if i == 2 {
-				return fmt.Errorf("failed to send announcement email after 3 attempts")
+			if i == emailMaxRetries-1 {
+				return fmt.Errorf("failed to send announcement email after %d attempts: %w", emailMaxRetries, err)
 			}
-			time.Sleep(5 * time.Second) // Wait 5 seconds before retrying
+			time.Sleep(emailRetryDelay)
 		} else {
-			fmt.Println("Announcement Mail Sent")
 			return nil
 		}
 	}

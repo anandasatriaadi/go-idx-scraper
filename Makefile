@@ -2,7 +2,7 @@
 
 # Default config path
 CONFIG_PATH ?= config/config.yml
-FLAGS ?= 
+FLAGS ?=
 
 # Build target OS/Arch
 GOOS ?= $(shell go env GOOS)
@@ -22,7 +22,6 @@ help:
 	@echo "  make announcement  - Run IDX announcement checker"
 	@echo "  make issuer        - Run Issuer list updater"
 	@echo "  make downloader    - Run Financial report downloader"
-	@echo "  make server        - Run REST API server"
 	@echo "  make test          - Run all unit tests"
 	@echo "  make clean         - Remove built binaries"
 	@echo ""
@@ -38,7 +37,6 @@ build:
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -ldflags="-s -w" -o bin/announcement ./cmd/announcement/main.go
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -ldflags="-s -w" -o bin/issuer ./cmd/issuer/main.go
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -ldflags="-s -w" -o bin/downloader ./cmd/downloader/main.go
-	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -ldflags="-s -w" -o bin/server ./cmd/server/main.go
 
 scraper:
 	go run ./cmd/scraper/main.go --config $(CONFIG_PATH) $(FLAGS)
@@ -51,9 +49,6 @@ issuer:
 
 downloader:
 	go run ./cmd/downloader/main.go --config $(CONFIG_PATH) $(FLAGS)
-
-server:
-	go run ./cmd/server/main.go --config $(CONFIG_PATH) $(FLAGS)
 
 test:
 	go test -v ./...

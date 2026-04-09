@@ -17,6 +17,12 @@ func (m *MockRepository) Create(ctx context.Context, r *FinancialReport) error {
 func (m *MockRepository) FindAll(ctx context.Context, filter any, opts ...options.Lister[options.FindOptions]) ([]*FinancialReport, error) {
 	return m.Reports, m.Err
 }
+func (m *MockRepository) FindOne(ctx context.Context, filter any) (*FinancialReport, error) {
+	return nil, m.Err
+}
+func (m *MockRepository) UpdateOne(ctx context.Context, filter, update any) error {
+	return m.Err
+}
 
 func TestService_Create(t *testing.T) {
 	mock := &MockRepository{}

@@ -15,7 +15,9 @@ import (
 
 	br "github.com/anandasatriaadi/go-idx-scraper/internal/browser"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/finreport"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/db/mongo"
 	"github.com/tebeka/selenium"
 	"go.uber.org/zap"
 )
@@ -80,7 +82,43 @@ func run() error {
 		logger.Error("Failed to load issuer list", zap.Error(err))
 		return err
 	}
-	processStocks(issuerList, cfg, ctx, browser.Driver, logger)
+
+	db, err := mongo.NewClient(logger)
+	if err != nil {
+		logger.Error("Failed to create database", zap.Error(err))
+		return err
+	}
+	dbInstance := db.Database(cfg.Database.DbName)
+	fRepo := mongo.NewFinancialReportRepository(dbInstance)
+	fSvc := finreport.NewService(fRepo, logger)
+
+	clearDownloadDir(cfg, logger)
+	updatedStocks := processVersionUpdates(ctx, fSvc, cfg, browser.Driver, logger)
+	err = helper.MoveFiles(logger, cfg)
+	if err != nil {
+		logger.Error("Failed to move files", zap.Error(err))
+	}
+
+	clearDownloadDir(cfg, logger)
+	newStocks := processStocks(issuerList, cfg, ctx, browser.Driver, logger, fSvc)
+
+	if len(newStocks) == 0 && len(updatedStocks) == 0 {
+		logger.Info("No new files downloaded")
+		return nil
+	}
+
+	err = helper.MoveFiles(logger, cfg)
+	if err != nil {
+		logger.Error("Failed to move files", zap.Error(err))
+	}
+
+	content, err := helper.GenerateNewReportEmail(newStocks, updatedStocks, cfg)
+	if err != nil {
+		logger.Error("Failed to generate email content", zap.Error(err))
+	} else if err := helper.SendMail(content, "", cfg); err != nil {
+		logger.Error("Failed to send email", zap.Error(err))
+	}
+
 	return nil
 }
 
@@ -115,7 +153,7 @@ func checkPageTitleForErrors(title, stockName string, logger *zap.Logger) error 
 	return nil
 }
 
-func downloadFile(url, filePath string, cfg *config.Config, ctx context.Context, driver selenium.WebDriver, logger *zap.Logger) error {
+func downloadFile(url, filePath string, driver selenium.WebDriver, logger *zap.Logger) error {
 	if err := driver.Get(url); err != nil {
 		return fmt.Errorf("failed to navigate: %w", err)
 	}
@@ -124,6 +162,9 @@ func downloadFile(url, filePath string, cfg *config.Config, ctx context.Context,
 	logger.Info("Browser title retrieved", zap.String("title", title))
 
 	if err := checkPageTitleForErrors(title, filepath.Base(filePath), logger); err != nil {
+		if err := driver.Get("data:,"); err != nil {
+			logger.Warn("Failed to navigate to blank page", zap.Error(err))
+		}
 		return err
 	}
 
@@ -134,8 +175,66 @@ func downloadFile(url, filePath string, cfg *config.Config, ctx context.Context,
 	return nil
 }
 
-func processStocks(issuerList []string, cfg *config.Config, ctx context.Context, driver selenium.WebDriver, logger *zap.Logger) {
-	period, modePeriodDefault := preparePeriodParams(cfg, logger)
+func clearDownloadDir(cfg *config.Config, logger *zap.Logger) {
+	entries, err := os.ReadDir(cfg.Paths.DownloadDir)
+	if err != nil {
+		logger.Warn("Failed to read download dir", zap.Error(err))
+		return
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			if err := os.Remove(filepath.Join(cfg.Paths.DownloadDir, entry.Name())); err != nil {
+				logger.Warn("Failed to remove file", zap.String("file", entry.Name()), zap.Error(err))
+			}
+		}
+	}
+}
+
+func processVersionUpdates(ctx context.Context, fSvc *finreport.Service, cfg *config.Config, driver selenium.WebDriver, logger *zap.Logger) []string {
+	reports, err := fSvc.FindAllNotLatest(ctx)
+	if err != nil {
+		logger.Error("Failed to find reports needing update", zap.Error(err))
+		return nil
+	}
+
+	var updatedStocks []string
+	for _, r := range reports {
+		select {
+		case <-ctx.Done():
+			logger.Info("Shutdown requested during version updates")
+			return updatedStocks
+		default:
+		}
+
+		filename := fmt.Sprintf("FinancialStatement-%d-%s-%s.xlsx", r.Year, r.PeriodString, r.IssuerCode)
+		filePath := filepath.Join(cfg.Paths.DownloadDir, filename)
+
+		logger.Info("Processing updated report", zap.String("issuer", r.IssuerCode), zap.Int("year", r.Year), zap.String("period", r.PeriodString))
+
+		url := fSvc.ConstructReportURL(r.Year, r.PeriodString, r.IssuerCode)
+		if err := downloadFile(url, filePath, driver, logger); err != nil {
+			logger.Warn("Failed to download updated report", zap.String("issuer", r.IssuerCode), zap.Error(err))
+			continue
+		}
+
+		if err := fSvc.MarkAsDownloaded(ctx, r.ID, url); err != nil {
+			logger.Error("Failed to mark as downloaded", zap.String("issuer", r.IssuerCode), zap.Error(err))
+		}
+
+		updatedStocks = append(updatedStocks, r.IssuerCode)
+	}
+
+	return updatedStocks
+}
+
+func processStocks(issuerList []string, cfg *config.Config, ctx context.Context, driver selenium.WebDriver, logger *zap.Logger, fSvc *finreport.Service) []string {
+	period, _ := preparePeriodParams(cfg, logger)
+
+	yearInt, err := strconv.Atoi(cfg.Download.Year)
+	if err != nil {
+		logger.Error("Invalid download year", zap.String("year", cfg.Download.Year), zap.Error(err))
+		return nil
+	}
 
 	serverErrorOccurred := true
 	loopCount := 0
@@ -153,19 +252,17 @@ func processStocks(issuerList []string, cfg *config.Config, ctx context.Context,
 			select {
 			case <-ctx.Done():
 				logger.Info("Shutdown requested during stock processing")
-				return
+				return nil
 			default:
 			}
 
-			var filename string
-			var modePeriod string
+			var periodString string
 			if cfg.Download.Mode == "AUDIT" {
-				filename = fmt.Sprintf("FinancialStatement-%s-Tahunan-%s.xlsx", cfg.Download.Year, stockName)
-				modePeriod = "Audit"
+				periodString = "Tahunan"
 			} else {
-				filename = fmt.Sprintf("FinancialStatement-%s-%s-%s.xlsx", cfg.Download.Year, period, stockName)
-				modePeriod = modePeriodDefault
+				periodString = period
 			}
+			filename := fmt.Sprintf("FinancialStatement-%s-%s-%s.xlsx", cfg.Download.Year, periodString, stockName)
 
 			checkPath := filepath.Join(cfg.Paths.CheckDir, filename)
 			filePath := filepath.Join(cfg.Paths.DownloadDir, filename)
@@ -177,9 +274,9 @@ func processStocks(issuerList []string, cfg *config.Config, ctx context.Context,
 			}
 
 			logger.Info("Processing stock", zap.String("stock", stockName))
-			url := fmt.Sprintf("https://www.idx.co.id/Portals/0/StaticData/ListedCompanies/Corporate_Actions/New_Info_JSX/Jenis_Informasi/01_Laporan_Keuangan/02_Soft_Copy_Laporan_Keuangan//Laporan%%20Keuangan%%20Tahun%%20%s/%s/%s/%s", cfg.Download.Year, modePeriod, stockName, filename)
+			url := fSvc.ConstructReportURL(yearInt, periodString, stockName)
 
-			if err := downloadFile(url, filePath, cfg, ctx, driver, logger); err != nil {
+			if err := downloadFile(url, filePath, driver, logger); err != nil {
 				if err.Error() == "server error" {
 					serverErrorOccurred = true
 				}
@@ -194,19 +291,5 @@ func processStocks(issuerList []string, cfg *config.Config, ctx context.Context,
 		}
 	}
 
-	downloadedStocks := helper.FindDownloadedStocks(cfg)
-	if len(downloadedStocks) == 0 {
-		logger.Info("No new files downloaded")
-		return
-	}
-
-	err := helper.MoveFiles(logger, cfg)
-	if err != nil {
-		logger.Error("Failed to move files", zap.Error(err))
-	}
-
-	content := helper.GenerateNewReportEmail(downloadedStocks, period, cfg)
-	if err := helper.SendMail(content, period, cfg); err != nil {
-		logger.Error("Failed to send email", zap.Error(err))
-	}
+	return helper.FindDownloadedStocks(cfg)
 }

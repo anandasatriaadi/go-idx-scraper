@@ -56,8 +56,9 @@ type Config struct {
 }
 
 var (
-	once     sync.Once
-	instance *Config
+	once       sync.Once
+	instance   *Config
+	emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 )
 
 // Load loads and validates config from YAML file.
@@ -153,6 +154,5 @@ func fileExists(path string) bool {
 
 // isValidEmail validates email format.
 func isValidEmail(email string) bool {
-	re := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
-	return re.MatchString(email)
+	return emailRegex.MatchString(email)
 }

@@ -2,9 +2,11 @@ package mongo
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/finreport"
+	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
@@ -14,9 +16,34 @@ type FinancialReportRepository struct {
 }
 
 func NewFinancialReportRepository(db *mongo.Database) finreport.Repository {
-	return &FinancialReportRepository{
+	repo := &FinancialReportRepository{
 		collection: db.Collection("financial_reports"),
 	}
+	if err := repo.ensureIndexes(context.Background()); err != nil {
+		log.Printf("warn: failed to ensure financial report indexes: %v", err)
+	}
+	return repo
+}
+
+func (r *FinancialReportRepository) ensureIndexes(ctx context.Context) error {
+	indexes := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "issuer_code", Value: 1},
+				{Key: "year", Value: 1},
+				{Key: "period_string", Value: 1},
+			},
+			Options: options.Index().SetUnique(true),
+		},
+		{
+			Keys: bson.D{{Key: "is_latest", Value: 1}},
+		},
+	}
+
+	if _, err := r.collection.Indexes().CreateMany(ctx, indexes); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (r *FinancialReportRepository) Create(ctx context.Context, model *finreport.FinancialReport) error {
@@ -41,4 +68,21 @@ func (r *FinancialReportRepository) FindAll(ctx context.Context, filter any, opt
 		return nil, err
 	}
 	return results, nil
+}
+
+func (r *FinancialReportRepository) FindOne(ctx context.Context, filter any) (*finreport.FinancialReport, error) {
+	var result finreport.FinancialReport
+	err := r.collection.FindOne(ctx, filter).Decode(&result)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (r *FinancialReportRepository) UpdateOne(ctx context.Context, filter, update any) error {
+	_, err := r.collection.UpdateOne(ctx, filter, update)
+	return err
 }

@@ -41,16 +41,18 @@ func (r *SystemRepository) UpdateOne(ctx context.Context, filter any, update any
 		return err
 	}
 
-	if updateDoc["$set"] == nil {
-		updateDoc["$set"] = bson.M{}
+	setMap, ok := updateDoc["$set"].(bson.M)
+	if !ok {
+		setMap = bson.M{}
+		updateDoc["$set"] = setMap
 	}
-	setMap := updateDoc["$set"].(bson.M)
 	setMap["updatedAt"] = time.Now()
 
-	if updateDoc["$setOnInsert"] == nil {
-		updateDoc["$setOnInsert"] = bson.M{}
+	soiMap, ok := updateDoc["$setOnInsert"].(bson.M)
+	if !ok {
+		soiMap = bson.M{}
+		updateDoc["$setOnInsert"] = soiMap
 	}
-	soiMap := updateDoc["$setOnInsert"].(bson.M)
 	soiMap["createdAt"] = time.Now()
 
 	_, err := r.collection.UpdateOne(ctx, filter, updateDoc, opts...)

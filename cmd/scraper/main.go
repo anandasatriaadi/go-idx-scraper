@@ -16,7 +16,6 @@ import (
 	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
 	newsRepo "github.com/anandasatriaadi/go-idx-scraper/internal/infra/db/mongo"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/scraper/kontan"
-	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.uber.org/zap"
 )
@@ -73,7 +72,7 @@ func run() error {
 		return err
 	}
 
-	repo := newsRepo.NewNewsRepository(dbClient.Database(viper.GetString("database.db_name")))
+	repo := newsRepo.NewNewsRepository(dbClient.Database(cfg.Database.DbName))
 	service := news.NewService(repo, logger, cfg)
 
 	browser, err := br.SetupSelenium(cfg)
