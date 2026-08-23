@@ -2,8 +2,10 @@ package news
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
+	"github.com/revrost/go-openrouter/jsonschema"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.uber.org/zap"
@@ -81,5 +83,39 @@ func TestNewsEntity_Fields(t *testing.T) {
 	}
 	if n.InvestmentTakeaway != "Strong cash flow and expansion potential." {
 		t.Errorf("Expected InvestmentTakeaway to match, got '%s'", n.InvestmentTakeaway)
+	}
+}
+
+func TestNewsSummary_SchemaAndPrompt(t *testing.T) {
+	schema, err := jsonschema.GenerateSchemaForType(NewsSummary{})
+	if err != nil {
+		t.Fatalf("Failed to generate schema: %v", err)
+	}
+	if schema == nil {
+		t.Fatal("Expected non-nil schema")
+	}
+
+	jsonSample := `{
+		"title": "Emiten BBRI Perkuat Pendanaan",
+		"summary": "BBRI membukukan pertumbuhan laba bersih dan peningkatan margin bunga bersih. Pertumbuhan ini didorong oleh segmen mikro yang solid. Manajemen mempertahankan rasio dividen tinggi.",
+		"priority": 2,
+		"value_score": 8,
+		"impact_direction": "Bullish",
+		"investment_takeaway": "Fundamental kuat dengan moat kokoh di pembiayaan mikro dan valuasi menarik."
+	}`
+
+	var summary NewsSummary
+	if err := json.Unmarshal([]byte(jsonSample), &summary); err != nil {
+		t.Fatalf("Failed to unmarshal NewsSummary: %v", err)
+	}
+
+	if summary.ValueScore != 8 {
+		t.Errorf("Expected ValueScore 8, got %d", summary.ValueScore)
+	}
+	if summary.ImpactDirection != "Bullish" {
+		t.Errorf("Expected ImpactDirection 'Bullish', got '%s'", summary.ImpactDirection)
+	}
+	if summary.InvestmentTakeaway == "" {
+		t.Errorf("Expected non-empty InvestmentTakeaway")
 	}
 }
