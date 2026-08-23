@@ -58,6 +58,15 @@ func (r *NewsRepository) FindAll(ctx context.Context, filter any, opts ...option
 	return results, nil
 }
 
+// ExistsByLink checks if an article with the given link already exists in MongoDB
+func (r *NewsRepository) ExistsByLink(ctx context.Context, link string) (bool, error) {
+	count, err := r.collection.CountDocuments(ctx, bson.M{"link": link}, options.Count().SetLimit(1))
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 // UpdateByID updates a document by ID
 func (r *NewsRepository) UpdateByID(ctx context.Context, id bson.ObjectID, update any) error {
 	var updateDoc bson.M
