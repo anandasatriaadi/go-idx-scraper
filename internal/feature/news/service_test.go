@@ -172,3 +172,40 @@ func TestBriefingEntity_Fields(t *testing.T) {
 		t.Errorf("Expected SectorHighlights with Banking")
 	}
 }
+
+func TestNewsSummary_TickersAndIndustry(t *testing.T) {
+	schema, err := jsonschema.GenerateSchemaForType(NewsSummary{})
+	if err != nil {
+		t.Fatalf("Failed to generate schema: %v", err)
+	}
+	if schema == nil {
+		t.Fatal("Expected non-nil schema")
+	}
+
+	jsonSample := `{
+		"title": "Kinerja Emiten Unggas Menguat",
+		"summary": "Emiten peternakan ayam mencatat pemulihan margin di semester II. Permintaan stabil menopang pertumbuhan laba. Efisiensi pakan menjadi faktor pendukung utama.",
+		"priority": 4,
+		"value_score": 6,
+		"impact_direction": "Bullish",
+		"investment_takeaway": "CPIN dan JPFA memiliki posisi pasar dominan dan efisiensi rantai pasok terintegrasi.",
+		"tickers": ["CPIN", "JPFA", "MAIN"],
+		"industry": "Poultry",
+		"is_industry_wide": true
+	}`
+
+	var summary NewsSummary
+	if err := json.Unmarshal([]byte(jsonSample), &summary); err != nil {
+		t.Fatalf("Failed to unmarshal NewsSummary: %v", err)
+	}
+
+	if len(summary.Tickers) != 3 || summary.Tickers[0] != "CPIN" {
+		t.Errorf("Expected tickers with CPIN, got %v", summary.Tickers)
+	}
+	if summary.Industry != "Poultry" {
+		t.Errorf("Expected industry 'Poultry', got '%s'", summary.Industry)
+	}
+	if !summary.IsIndustryWide {
+		t.Errorf("Expected is_industry_wide to be true")
+	}
+}

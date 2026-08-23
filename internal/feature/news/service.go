@@ -40,12 +40,15 @@ func (s *Service) FindByID(ctx context.Context, id bson.ObjectID) (*News, error)
 }
 
 type NewsSummary struct {
-	Title              string `json:"title" jsonschema:"description=An updated engaging and objective title capturing the essence of the article"`
-	Summary            string `json:"summary" jsonschema:"description=Concise 3-sentence summary highlighting financial facts figures and immediate market implications"`
-	Priority           int    `json:"priority" jsonschema:"description=Market impact priority from 1 (highest market urgency/impact) to 10 (routine/low market impact)"`
-	ValueScore         int    `json:"value_score" jsonschema:"description=Fundamental value investing impact score strictly between -10 and +10 (-10 is severe fundamental impairment, 0 is neutral/macro noise, +10 is massive fundamental value creation)"`
-	ImpactDirection    string `json:"impact_direction" jsonschema:"enum=Bullish,enum=Bearish,enum=Neutral,description=Directional impact on underlying business intrinsic value"`
-	InvestmentTakeaway string `json:"investment_takeaway" jsonschema:"description=1-2 sentence actionable takeaway strictly from the perspective of a disciplined long-term value investor focusing on moat, capital allocation, cash flows, and intrinsic value"`
+	Title              string   `json:"title" jsonschema:"description=An updated engaging and objective title capturing the essence of the article"`
+	Summary            string   `json:"summary" jsonschema:"description=Concise 3-sentence summary highlighting financial facts figures and immediate market implications"`
+	Priority           int      `json:"priority" jsonschema:"description=Market impact priority from 1 (highest market urgency/impact) to 10 (routine/low market impact)"`
+	ValueScore         int      `json:"value_score" jsonschema:"description=Fundamental value investing impact score strictly between -10 and +10 (-10 is severe fundamental impairment, 0 is neutral/macro noise, +10 is massive fundamental value creation)"`
+	ImpactDirection    string   `json:"impact_direction" jsonschema:"enum=Bullish,enum=Bearish,enum=Neutral,description=Directional impact on underlying business intrinsic value"`
+	InvestmentTakeaway string   `json:"investment_takeaway" jsonschema:"description=1-2 sentence actionable takeaway strictly from the perspective of a disciplined long-term value investor focusing on moat, capital allocation, cash flows, and intrinsic value"`
+	Tickers            []string `json:"tickers" jsonschema:"description=List of 4-letter IDX stock ticker symbols explicitly mentioned or directly affected (e.g. ['BBRI', 'BBCA']). Empty array if none."`
+	Industry           string   `json:"industry" jsonschema:"description=Primary industry or sector classification (e.g. Banking, Poultry, Mining, Energy, Consumer Goods, Infrastructure, Technology, Macroeconomics)"`
+	IsIndustryWide     bool     `json:"is_industry_wide" jsonschema:"description=True if the news affects an entire industry sector or macroeconomic policy rather than just one individual company"`
 }
 
 func (s *Service) Summarize(ctx context.Context, ids []bson.ObjectID) error {
@@ -82,6 +85,9 @@ Provide your evaluation adhering to the following rules:
   * +1 to +10: Fundamental enhancement (widening moat, high ROIC reinvestment, robust organic growth, disciplined capital allocation).
 - ImpactDirection: Exactly "Bullish", "Bearish", or "Neutral".
 - InvestmentTakeaway: 1 to 2 sentences summarizing the bottom-line takeaway for a long-term value investor.
+- Tickers: Array of uppercase 4-letter Indonesian stock tickers explicitly mentioned or impacted (e.g. ["BBRI", "BBCA"]). Empty array [] if no specific company is mentioned.
+- Industry: Sector category (e.g., "Banking", "Poultry", "Mining", "Energy", "Consumer Goods", "Technology", "Infrastructure", "Macroeconomics").
+- IsIndustryWide: Boolean true if the news affects the whole sector or macro economy rather than an isolated company.
 
 Article:
 """
@@ -125,6 +131,8 @@ Article:
 				zap.Int("priority", summary.Priority),
 				zap.Int("value_score", summary.ValueScore),
 				zap.String("impact_direction", summary.ImpactDirection),
+				zap.Strings("tickers", summary.Tickers),
+				zap.String("industry", summary.Industry),
 			)
 
 			// Update the news document
@@ -136,6 +144,9 @@ Article:
 					"value_score":         summary.ValueScore,
 					"impact_direction":    summary.ImpactDirection,
 					"investment_takeaway": summary.InvestmentTakeaway,
+					"tickers":             summary.Tickers,
+					"industry":            summary.Industry,
+					"is_industry_wide":    summary.IsIndustryWide,
 					"updated_at":          time.Now(),
 				},
 			}
