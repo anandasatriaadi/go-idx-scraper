@@ -59,3 +59,27 @@ func TestService_FindByID(t *testing.T) {
 		t.Errorf("Expected ID %v, got %v", id, res.ID)
 	}
 }
+
+func TestNewsEntity_Fields(t *testing.T) {
+	id := bson.NewObjectID()
+	n := &News{
+		ID:                 id,
+		Title:              "Sample News",
+		Summary:            "3 sentence summary.",
+		Content:            "Full markdown content.",
+		Priority:           5,
+		ValueScore:         7,
+		ImpactDirection:    "Bullish",
+		InvestmentTakeaway: "Strong cash flow and expansion potential.",
+	}
+
+	if n.ValueScore != 7 {
+		t.Errorf("Expected ValueScore 7, got %d", n.ValueScore)
+	}
+	if n.ImpactDirection != "Bullish" {
+		t.Errorf("Expected ImpactDirection 'Bullish', got '%s'", n.ImpactDirection)
+	}
+	if n.InvestmentTakeaway != "Strong cash flow and expansion potential." {
+		t.Errorf("Expected InvestmentTakeaway to match, got '%s'", n.InvestmentTakeaway)
+	}
+}

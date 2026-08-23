@@ -40,6 +40,9 @@ export interface News {
   content?: string;
   link?: string;
   priority?: number;
+  value_score?: number;
+  impact_direction?: 'Bullish' | 'Bearish' | 'Neutral';
+  investment_takeaway?: string;
 }
 
 export interface NewsResponse extends News {

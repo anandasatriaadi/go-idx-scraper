@@ -9,15 +9,18 @@ import (
 )
 
 type News struct {
-	CreatedAt time.Time     `bson:"created_at" json:"created_at"`
-	UpdatedAt time.Time     `bson:"updated_at" json:"updated_at"`
-	Date      time.Time     `bson:"date" json:"date"`
-	Title     string        `bson:"title" json:"title"`
-	Summary   string        `bson:"summary" json:"summary"`
-	Content   string        `bson:"content" json:"content"`
-	Link      string        `bson:"link" json:"link"`
-	Priority  int           `bson:"priority" json:"priority"`
-	ID        bson.ObjectID `bson:"_id,omitempty" json:"id"`
+	CreatedAt          time.Time     `bson:"created_at" json:"created_at"`
+	UpdatedAt          time.Time     `bson:"updated_at" json:"updated_at"`
+	Date               time.Time     `bson:"date" json:"date"`
+	Title              string        `bson:"title" json:"title"`
+	Summary            string        `bson:"summary" json:"summary"`
+	Content            string        `bson:"content" json:"content"`
+	Link               string        `bson:"link" json:"link"`
+	Priority           int           `bson:"priority" json:"priority"`
+	ValueScore         int           `bson:"value_score" json:"value_score"`
+	ImpactDirection    string        `bson:"impact_direction" json:"impact_direction"`
+	InvestmentTakeaway string        `bson:"investment_takeaway" json:"investment_takeaway"`
+	ID                 bson.ObjectID `bson:"_id,omitempty" json:"id"`
 }
 
 // Port: Repository defines data persistence interface (Output Port)
