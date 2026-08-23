@@ -209,3 +209,55 @@ func TestNewsSummary_TickersAndIndustry(t *testing.T) {
 		t.Errorf("Expected is_industry_wide to be true")
 	}
 }
+
+func TestDailyBriefing_SchemaGeneration(t *testing.T) {
+	schema, err := jsonschema.GenerateSchemaForType(BriefingSchemaOutput{})
+	if err != nil {
+		t.Fatalf("Failed to generate BriefingSchemaOutput schema: %v", err)
+	}
+	if schema == nil {
+		t.Fatal("Expected non-nil schema")
+	}
+
+	jsonSample := `{
+		"title": "Morning Market Intelligence Briefing - 24 August 2026",
+		"macro_pulse": "IHSG consolidates as foreign flows stabilize and commodity prices rebound.",
+		"bullish_lookout": [
+			{
+				"ticker": "BBRI",
+				"issuer_name": "PT Bank Rakyat Indonesia Tbk",
+				"headline": "Micro Lending Expansion",
+				"rationale": "High NIM and robust capital adequacy ratio.",
+				"value_score": 8,
+				"investment_takeaway": "Long-term compounding opportunity."
+			}
+		],
+		"bearish_lookout": [
+			{
+				"ticker": "ASBI",
+				"issuer_name": "PT Asuransi Bintang Tbk",
+				"headline": "Embezzlement Scandal",
+				"rationale": "Governance breakdown.",
+				"value_score": -7,
+				"investment_takeaway": "High governance risk; avoid."
+			}
+		],
+		"sector_highlights": [
+			{
+				"sector": "Banking",
+				"summary": "Liquidity remains tight but top tier banks maintain pricing power.",
+				"sentiment": "Neutral"
+			}
+		],
+		"action_plan": "Focus on high-quality big cap banks and poultry leaders with widening moats."
+	}`
+
+	var output BriefingSchemaOutput
+	if err := json.Unmarshal([]byte(jsonSample), &output); err != nil {
+		t.Fatalf("Failed to unmarshal BriefingSchemaOutput: %v", err)
+	}
+
+	if output.Title == "" || len(output.BullishLookout) != 1 {
+		t.Errorf("Unexpected unmarshaled briefing: %+v", output)
+	}
+}
