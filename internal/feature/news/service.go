@@ -89,7 +89,7 @@ Article:
 """`, n.Content)
 
 		request := openrouter.ChatCompletionRequest{
-			Model: "google/gemini-2.5-flash",
+			Model: "google/gemini-3.7-flash",
 			Messages: []openrouter.ChatCompletionMessage{
 				{
 					Role:    openrouter.ChatMessageRoleUser,
@@ -128,8 +128,8 @@ Article:
 			)
 
 			// Update the news document
-			update := map[string]any{
-				"$set": map[string]any{
+			update := bson.M{
+				"$set": bson.M{
 					"title":               summary.Title,
 					"summary":             summary.Summary,
 					"priority":            summary.Priority,

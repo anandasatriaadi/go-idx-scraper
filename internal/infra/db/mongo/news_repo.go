@@ -64,21 +64,23 @@ func (r *NewsRepository) UpdateByID(ctx context.Context, id bson.ObjectID, updat
 	switch v := update.(type) {
 	case bson.M:
 		updateDoc = v
-	case map[string]interface{}:
+	case map[string]any:
 		updateDoc = bson.M(v)
 	default:
-		// If it's something else, we might not be able to easily add UpdatedAt
-		// But for now let's assume it's one of the above or we just pass it through
 		_, err := r.collection.UpdateOne(ctx, bson.M{"_id": id}, update)
 		return err
 	}
 
-	setMap, ok := updateDoc["$set"].(bson.M)
-	if !ok {
-		setMap = bson.M{}
-		updateDoc["$set"] = setMap
+	if setVal, exists := updateDoc["$set"]; exists {
+		switch s := setVal.(type) {
+		case bson.M:
+			s["updated_at"] = time.Now()
+		case map[string]any:
+			s["updated_at"] = time.Now()
+		}
+	} else {
+		updateDoc["$set"] = bson.M{"updated_at": time.Now()}
 	}
-	setMap["updated_at"] = time.Now()
 
 	_, err := r.collection.UpdateOne(ctx, bson.M{"_id": id}, updateDoc)
 	return err
