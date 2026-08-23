@@ -93,6 +93,9 @@ type Article struct {
 }
 
 func (s *Scraper) Scrape(ctx context.Context, startDate, endDate time.Time, onNewsFound func(*news.News) error) error {
+	channels := []string{"investasi", "keuangan"}
+	seenLinks := make(map[string]bool)
+
 	for d := startDate; !d.After(endDate); d = d.AddDate(0, 0, 1) {
 		select {
 		case <-ctx.Done():
@@ -101,72 +104,99 @@ func (s *Scraper) Scrape(ctx context.Context, startDate, endDate time.Time, onNe
 		}
 		s.logger.Info("Fetching articles for date", zap.Time("date", d))
 
-		perPage := 0
-		for {
+		for _, kanal := range channels {
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
 			default:
 			}
-			htmlContent, err := s.fetchArticleListHTML(ctx, d, perPage)
-			if err != nil {
-				s.logger.Warn("Failed to fetch article list HTML", zap.Time("date", d), zap.Int("per_page", perPage), zap.Error(err))
-				break
-			}
+			s.logger.Info("Fetching articles for channel", zap.String("channel", kanal), zap.Time("date", d))
 
-			articles := s.parseArticlesFromHTML(htmlContent)
-			s.logger.Info("Parsed articles count for page", zap.Time("date", d), zap.Int("per_page", perPage), zap.Int("count", len(articles)))
-
-			if len(articles) == 0 {
-				break
-			}
-
-			for _, art := range articles {
-				s.logger.Info("Fetching article content", zap.String("link", art.Link))
-
-				articleHtml, err := s.fetchArticleContent(ctx, art.Link)
+			perPage := 0
+			for {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+				}
+				htmlContent, err := s.fetchArticleListHTML(ctx, kanal, d, perPage)
 				if err != nil {
-					s.logger.Warn("Failed to fetch article content", zap.String("link", art.Link), zap.Error(err))
-					continue
+					s.logger.Warn("Failed to fetch article list HTML", zap.String("channel", kanal), zap.Time("date", d), zap.Int("per_page", perPage), zap.Error(err))
+					break
 				}
 
-				markdown, err := s.processor.Process(articleHtml)
-				if err != nil {
-					s.logger.Warn("Failed to process article content", zap.String("link", art.Link), zap.Error(err))
-					continue
+				articles := s.parseArticlesFromHTML(htmlContent)
+				s.logger.Info("Parsed articles count for page", zap.String("channel", kanal), zap.Time("date", d), zap.Int("per_page", perPage), zap.Int("count", len(articles)))
+
+				if len(articles) == 0 {
+					break
 				}
 
-				dateParsed, err := s.parseDate(art.Date)
-				if err != nil {
-					s.logger.Warn("Failed to parse date", zap.String("dateStr", art.Date), zap.Error(err))
-					continue
+				for _, art := range articles {
+					key := normalizeArticleKey(art.Link)
+					if key != "" && seenLinks[key] {
+						s.logger.Debug("Skipping duplicate article", zap.String("link", art.Link), zap.String("key", key))
+						continue
+					}
+					if key != "" {
+						seenLinks[key] = true
+					}
+
+					s.logger.Info("Fetching article content", zap.String("link", art.Link))
+
+					articleHtml, err := s.fetchArticleContent(ctx, art.Link)
+					if err != nil {
+						s.logger.Warn("Failed to fetch article content", zap.String("link", art.Link), zap.Error(err))
+						continue
+					}
+
+					markdown, err := s.processor.Process(articleHtml)
+					if err != nil {
+						s.logger.Warn("Failed to process article content", zap.String("link", art.Link), zap.Error(err))
+						continue
+					}
+
+					dateParsed, err := s.parseDate(art.Date)
+					if err != nil {
+						s.logger.Warn("Failed to parse date", zap.String("dateStr", art.Date), zap.Error(err))
+						continue
+					}
+
+					n := &news.News{
+						ID:       bson.NewObjectID(),
+						Title:    art.Title,
+						Date:     dateParsed,
+						Summary:  "",
+						Content:  markdown,
+						Priority: 10,
+						Link:     art.Link,
+					}
+
+					if err := onNewsFound(n); err != nil {
+						s.logger.Error("Failed to handle found news", zap.Error(err))
+					}
 				}
 
-				n := &news.News{
-					ID:       bson.NewObjectID(),
-					Title:    art.Title,
-					Date:     dateParsed,
-					Summary:  "",
-					Content:  markdown,
-					Priority: 10,
-					Link:     art.Link,
+				if len(articles) < 20 {
+					break
 				}
-
-				if err := onNewsFound(n); err != nil {
-					s.logger.Error("Failed to handle found news", zap.Error(err))
-				}
+				perPage += 20
 			}
-
-			if len(articles) < 20 {
-				break
-			}
-			perPage += 20
 		}
 	}
 	return nil
 }
 
-func (s *Scraper) fetchArticleListHTML(ctx context.Context, date time.Time, perPage int) (string, error) {
+func normalizeArticleKey(link string) string {
+	link = strings.TrimSpace(link)
+	link = strings.TrimSuffix(link, "/")
+	if idx := strings.Index(link, "/news/"); idx != -1 {
+		return link[idx+len("/news/"):]
+	}
+	return link
+}
+
+func (s *Scraper) fetchArticleListHTML(ctx context.Context, kanal string, date time.Time, perPage int) (string, error) {
 	var perPageStr string
 	if perPage == 0 {
 		perPageStr = ""
@@ -176,7 +206,7 @@ func (s *Scraper) fetchArticleListHTML(ctx context.Context, date time.Time, perP
 	day := fmt.Sprintf("%02d", date.Day())
 	month := fmt.Sprintf("%02d", int(date.Month()))
 	year := date.Year()
-	url := fmt.Sprintf("https://www.kontan.co.id/search/indeks?kanal=investasi&tanggal=%s&bulan=%s&tahun=%d&pos=indeks&per_page=%s", day, month, year, perPageStr)
+	url := fmt.Sprintf("https://www.kontan.co.id/search/indeks?kanal=%s&tanggal=%s&bulan=%s&tahun=%d&pos=indeks&per_page=%s", kanal, day, month, year, perPageStr)
 	htmlContent, err := s.browser.FetchList(ctx, url)
 	if err != nil {
 		return "", fmt.Errorf("browser fetch error for list: %w", err)
@@ -294,7 +324,33 @@ func (p *HTMLToMarkdownProcessor) Process(htmlContent string) (string, error) {
 		return "", fmt.Errorf("failed to convert HTML to Markdown: %w", err)
 	}
 
-	return markdown, nil
+	// Post-processing cleanup on Markdown
+	markdown = strings.ReplaceAll(markdown, "\u00a0", " ")
+	markdown = strings.ReplaceAll(markdown, "&nbsp;", " ")
+
+	lines := strings.Split(markdown, "\n")
+	var cleanedLines []string
+	blankCount := 0
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			blankCount++
+			if blankCount <= 1 {
+				cleanedLines = append(cleanedLines, "")
+			}
+		} else {
+			blankCount = 0
+			cleanedLines = append(cleanedLines, line)
+		}
+	}
+
+	result := strings.TrimSpace(strings.Join(cleanedLines, "\n"))
+	if result == "" {
+		return "", fmt.Errorf("empty markdown result")
+	}
+
+	return result, nil
 }
 
 func (p *HTMLToMarkdownProcessor) filterArticleContent(htmlContent string) string {
@@ -305,25 +361,45 @@ func (p *HTMLToMarkdownProcessor) filterArticleContent(htmlContent string) strin
 		return htmlContent // Fallback to original
 	}
 
-	// Remove empty or non-content <p> (spammers)
-	doc.Find("h2:has(span), p:has(span), p:has(a)").FilterFunction(func(i int, s *goquery.Selection) bool {
-		text := strings.TrimSpace(s.Text())
-		text = strings.ToLower(text)
-		return text == "" || strings.Contains(text, "baca juga") || strings.Contains(text, "selanjutnya") || strings.Contains(text, "menarik dibaca") || strings.Contains(text, "google news")
-	}).Remove()
+	// 1. Remove script, style, and iframe tags
+	doc.Find("script, style, iframe").Remove()
 
-	var body string
-	var fallbackText []string
-	doc.Find("p").Each(func(i int, s *goquery.Selection) {
+	// 2. Remove ads, social share blocks, tags, recommendation widgets, and interactive components
+	doc.Find(`
+		.insideads, .heightads250, .high-10, .ads-inreads, .bacajuga-listdesk,
+		[id^="div-inside-"], [id^="div-belowarticle-"], #adsoutsream, #endscroll,
+		#share-it, .listbut-shr, .block-shared,
+		.tag, .tagl, .mar-v-10:has(.fa-tag),
+		[d-widget="newsfeed_recommendation"], .box:has(h2.box__title), article.column-6,
+		.state-picker, .state-result, [id^="state"],
+		.bor-top, .overlay
+	`).Remove()
+
+	// 3. Filter out promotional and filler text elements (only specific text-holding elements, not container divs)
+	doc.Find("p, h1, h2, h3, h4, li, figcaption").Each(func(i int, s *goquery.Selection) {
 		text := strings.TrimSpace(s.Text())
-		if text != "" { // Skip truly empty <p>
-			fallbackText = append(fallbackText, text)
+		textLower := strings.ToLower(text)
+
+		if text == "" {
+			s.Remove()
+			return
+		}
+
+		if strings.Contains(textLower, "baca juga") ||
+			strings.Contains(textLower, "selanjutnya:") ||
+			strings.Contains(textLower, "menarik dibaca") ||
+			strings.Contains(textLower, "google news") ||
+			strings.Contains(textLower, "whatsapp channel") ||
+			strings.Contains(textLower, "simak video") ||
+			strings.Contains(textLower, "cek berita dan artikel") ||
+			strings.Contains(textLower, "indeks berita") {
+			s.Remove()
 		}
 	})
-	if len(fallbackText) > 0 {
-		body = "<p>" + strings.Join(fallbackText, "</p><p>") + "</p>"
-	} else {
-		body = htmlContent // Ultimate fallback
+
+	body, err := doc.Find("body").Html()
+	if err != nil || strings.TrimSpace(body) == "" {
+		body, _ = doc.Html()
 	}
 
 	return strings.TrimSpace(body)

@@ -107,11 +107,6 @@ func TestFilterArticleContent(t *testing.T) {
 	if !strings.Contains(filtered, "Content paragraph 2") {
 		t.Errorf("Content should contain 'Content paragraph 2'")
 	}
-
-	// Check if it wraps properly
-	if !strings.HasPrefix(filtered, "<p>") || !strings.HasSuffix(filtered, "</p>") {
-		t.Errorf("Content should be wrapped in <p> tags")
-	}
 }
 
 func TestProcess(t *testing.T) {
@@ -333,5 +328,88 @@ func TestParseDate(t *testing.T) {
 	expected := time.Date(2024, 2, 5, 0, 0, 0, 0, time.UTC)
 	if !parsed.Equal(expected) {
 		t.Errorf("Expected %v, got %v", expected, parsed)
+	}
+}
+
+func TestScrape_MultiChannelAndDeduplication(t *testing.T) {
+	logger := zap.NewNop()
+	scraper := NewScraper(logger, nil)
+
+	var fetchedURLs []string
+	investasiListHTML := `
+		<li>
+			<div class="ket">
+				<h1><a href="https://investasi.kontan.co.id/news/news-1">News 1</a></h1>
+				<div class="fs14"><span>Investasi</span><span>| 05 Februari 2024</span></div>
+			</div>
+		</li>
+		<li>
+			<div class="ket">
+				<h1><a href="https://investasi.kontan.co.id/news/shared-news">Shared News</a></h1>
+				<div class="fs14"><span>Investasi</span><span>| 05 Februari 2024</span></div>
+			</div>
+		</li>
+	`
+	keuanganListHTML := `
+		<li>
+			<div class="ket">
+				<h1><a href="https://keuangan.kontan.co.id/news/shared-news">Shared News</a></h1>
+				<div class="fs14"><span>Keuangan</span><span>| 05 Februari 2024</span></div>
+			</div>
+		</li>
+		<li>
+			<div class="ket">
+				<h1><a href="https://keuangan.kontan.co.id/news/news-2">News 2</a></h1>
+				<div class="fs14"><span>Keuangan</span><span>| 05 Februari 2024</span></div>
+			</div>
+		</li>
+	`
+
+	mock := &RefinedMockBrowser{
+		FetchListFunc: func(ctx context.Context, url string) (string, error) {
+			fetchedURLs = append(fetchedURLs, url)
+			if strings.Contains(url, "kanal=investasi") {
+				return investasiListHTML, nil
+			}
+			if strings.Contains(url, "kanal=keuangan") {
+				return keuanganListHTML, nil
+			}
+			return "", nil
+		},
+		FetchContentFunc: func(ctx context.Context, url string) (string, string, error) {
+			return "<p>Clean content</p>", "", nil
+		},
+	}
+	scraper.WithBrowser(mock)
+
+	date := time.Date(2024, 2, 5, 0, 0, 0, 0, time.UTC)
+	var processedTitles []string
+	err := scraper.Scrape(context.Background(), date, date, func(n *news.News) error {
+		processedTitles = append(processedTitles, n.Title)
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("Scrape failed: %v", err)
+	}
+
+	// Verify both channels were fetched
+	hasInvestasi := false
+	hasKeuangan := false
+	for _, u := range fetchedURLs {
+		if strings.Contains(u, "kanal=investasi") {
+			hasInvestasi = true
+		}
+		if strings.Contains(u, "kanal=keuangan") {
+			hasKeuangan = true
+		}
+	}
+	if !hasInvestasi || !hasKeuangan {
+		t.Errorf("Expected both investasi and keuangan channels to be fetched, got URLs: %v", fetchedURLs)
+	}
+
+	// Verify deduplication (Shared News should only be processed once when URL paths/slugs or links match)
+	if len(processedTitles) != 3 {
+		t.Errorf("Expected 3 unique news articles (news-1, shared-news, news-2), got %d: %v", len(processedTitles), processedTitles)
 	}
 }
