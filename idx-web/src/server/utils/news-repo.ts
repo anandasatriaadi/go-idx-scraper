@@ -13,6 +13,8 @@ export interface NewsFilter {
   date_lte?: string;
   priority?: number;
   source?: string;
+  ticker?: string;
+  industry?: string;
 }
 
 export async function findAllNews(filter: NewsFilter = {}): Promise<News[]> {
@@ -36,6 +38,14 @@ export async function findAllNews(filter: NewsFilter = {}): Promise<News[]> {
   
   if (filter.source) {
     query.link = filter.source
+  }
+
+  if (filter.ticker) {
+    (query as any).tickers = filter.ticker.toUpperCase()
+  }
+
+  if (filter.industry) {
+    query.industry = filter.industry
   }
   
   const results = await collection.find(query).toArray()

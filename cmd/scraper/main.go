@@ -32,11 +32,13 @@ func run() error {
 	var noHeadless bool
 	var scrapeStartDate string
 	var scrapeEndDate string
+	var skipBriefing bool
 
 	flag.StringVar(&configPath, "config", "config/config.yml", "Path to configuration file")
 	flag.BoolVar(&noHeadless, "no-headless", false, "Disable headless mode for browser")
-	flag.StringVar(&scrapeStartDate, "start-date", "", "Start date (YYYY-MM-DD), default today")
-	flag.StringVar(&scrapeEndDate, "end-date", "", "End date (YYYY-MM-DD), default today")
+	flag.StringVar(&scrapeStartDate, "start-date", "", "Start date (YYYY-MM-DD), default yesterday GMT+8")
+	flag.StringVar(&scrapeEndDate, "end-date", "", "End date (YYYY-MM-DD), default today GMT+8")
+	flag.BoolVar(&skipBriefing, "skip-briefing", false, "Skip generating daily briefing")
 	flag.Parse()
 
 	logger, err := helper.NewLogger("scraper")
@@ -72,7 +74,9 @@ func run() error {
 		return err
 	}
 
-	repo := newsRepo.NewNewsRepository(dbClient.Database(cfg.Database.DbName))
+	db := dbClient.Database(cfg.Database.DbName)
+	repo := newsRepo.NewNewsRepository(db)
+	briefingRepo := newsRepo.NewBriefingRepository(db)
 	service := news.NewService(repo, logger, cfg)
 
 	browser, err := br.SetupSelenium(cfg)
@@ -84,13 +88,16 @@ func run() error {
 
 	scraper := kontan.NewScraper(logger, kontan.NewDefaultBrowser(browser.Driver))
 
-	now := time.Now()
+	// GMT+8 (WITA / Singapore / Perth timezone)
+	locGMT8 := time.FixedZone("GMT+8", 8*3600)
+	nowGMT8 := time.Now().In(locGMT8)
+
 	var startDate, endDate time.Time
 
 	if scrapeStartDate == "" {
-		startDate = now
+		startDate = nowGMT8.AddDate(0, 0, -1) // Yesterday
 	} else {
-		startDate, err = time.Parse("2006-01-02", scrapeStartDate)
+		startDate, err = time.ParseInLocation("2006-01-02", scrapeStartDate, locGMT8)
 		if err != nil {
 			logger.Error("Failed to parse start-date", zap.Error(err))
 			return err
@@ -98,17 +105,28 @@ func run() error {
 	}
 
 	if scrapeEndDate == "" {
-		endDate = startDate
+		endDate = nowGMT8 // Today
 	} else {
-		endDate, err = time.Parse("2006-01-02", scrapeEndDate)
+		endDate, err = time.ParseInLocation("2006-01-02", scrapeEndDate, locGMT8)
 		if err != nil {
 			logger.Error("Failed to parse end-date", zap.Error(err))
 			return err
 		}
 	}
 
+	logger.Info("Starting scrape window in GMT+8", zap.Time("start", startDate), zap.Time("end", endDate))
+
 	var ids []bson.ObjectID
 	err = scraper.Scrape(ctx, startDate, endDate, func(n *news.News) error {
+		// Idempotency: skip if already in MongoDB
+		exists, err := repo.ExistsByLink(ctx, n.Link)
+		if err != nil {
+			logger.Warn("Failed to check if news exists by link", zap.String("link", n.Link), zap.Error(err))
+		} else if exists {
+			logger.Debug("News article already exists in DB, skipping", zap.String("link", n.Link))
+			return nil
+		}
+
 		if err := service.Create(ctx, n); err != nil {
 			return err
 		}
@@ -121,9 +139,26 @@ func run() error {
 	}
 
 	if len(ids) > 0 {
+		logger.Info("Summarizing newly fetched articles", zap.Int("count", len(ids)))
 		if err := service.Summarize(ctx, ids); err != nil {
 			logger.Error("Failed to summarize news", zap.Error(err))
 		}
 	}
+
+	// Generate Daily Briefing and send email
+	if !skipBriefing {
+		briefing, err := service.GenerateDailyBriefing(ctx, nowGMT8, briefingRepo)
+		if err != nil {
+			logger.Error("Failed to generate Daily Briefing", zap.Error(err))
+		} else if briefing != nil {
+			logger.Info("Sending Daily Market Briefing email", zap.String("title", briefing.Title))
+			if err := helper.SendMail(briefing.RawMarkdown, briefing.Title, cfg); err != nil {
+				logger.Error("Failed to send Daily Briefing email", zap.Error(err))
+			} else {
+				logger.Info("Daily Briefing email successfully dispatched")
+			}
+		}
+	}
+
 	return nil
 }

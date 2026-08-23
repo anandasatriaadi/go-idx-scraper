@@ -19,6 +19,12 @@ export default defineEventHandler(async (event) => {
   if (query.source) {
     filter.source = String(query.source)
   }
+  if (query.ticker) {
+    filter.ticker = String(query.ticker)
+  }
+  if (query.industry) {
+    filter.industry = String(query.industry)
+  }
   
   const newsList = await findAllNews(filter)
   
