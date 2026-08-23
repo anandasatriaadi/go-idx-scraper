@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/revrost/go-openrouter/jsonschema"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -26,6 +27,9 @@ func (m *MockRepository) FindByID(ctx context.Context, id bson.ObjectID) (*News,
 }
 func (m *MockRepository) UpdateByID(ctx context.Context, id bson.ObjectID, update any) error {
 	return m.Err
+}
+func (m *MockRepository) ExistsByLink(ctx context.Context, link string) (bool, error) {
+	return false, m.Err
 }
 
 func TestService_Create(t *testing.T) {
@@ -117,5 +121,54 @@ func TestNewsSummary_SchemaAndPrompt(t *testing.T) {
 	}
 	if summary.InvestmentTakeaway == "" {
 		t.Errorf("Expected non-empty InvestmentTakeaway")
+	}
+}
+
+func TestBriefingEntity_Fields(t *testing.T) {
+	id := bson.NewObjectID()
+	now := time.Now()
+	b := &Briefing{
+		ID:         id,
+		Date:       now,
+		Title:      "Daily Market Briefing",
+		MacroPulse: "Positive macro sentiment.",
+		BullishLookout: []BriefingItem{
+			{
+				Ticker:             "BBRI",
+				IssuerName:         "PT Bank Rakyat Indonesia Tbk",
+				Headline:           "Expanding Net Interest Margin",
+				Rationale:          "Strong micro loan disbursement.",
+				ValueScore:         8,
+				InvestmentTakeaway: "Attractive valuation and solid moat.",
+			},
+		},
+		BearishLookout: []BriefingItem{
+			{
+				Ticker:             "ASBI",
+				IssuerName:         "PT Asuransi Bintang Tbk",
+				Headline:           "Embezzlement Investigation",
+				Rationale:          "Internal controls failure.",
+				ValueScore:         -7,
+				InvestmentTakeaway: "Avoid until balance sheet risk is cleared.",
+			},
+		},
+		SectorHighlights: []SectorHighlight{
+			{
+				Sector:    "Banking",
+				Summary:   "Liquidity tightening persists.",
+				Sentiment: "Neutral",
+			},
+		},
+		ActionPlan: "Accumulate high ROE banks on weakness.",
+	}
+
+	if len(b.BullishLookout) != 1 || b.BullishLookout[0].Ticker != "BBRI" {
+		t.Errorf("Expected BullishLookout with BBRI")
+	}
+	if len(b.BearishLookout) != 1 || b.BearishLookout[0].Ticker != "ASBI" {
+		t.Errorf("Expected BearishLookout with ASBI")
+	}
+	if len(b.SectorHighlights) != 1 || b.SectorHighlights[0].Sector != "Banking" {
+		t.Errorf("Expected SectorHighlights with Banking")
 	}
 }

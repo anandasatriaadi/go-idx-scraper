@@ -43,6 +43,39 @@ export interface News {
   value_score?: number;
   impact_direction?: 'Bullish' | 'Bearish' | 'Neutral';
   investment_takeaway?: string;
+  tickers?: string[];
+  industry?: string;
+  is_industry_wide?: boolean;
+}
+
+export interface BriefingItem {
+  ticker?: string;
+  issuer_name?: string;
+  headline: string;
+  rationale: string;
+  value_score: number;
+  investment_takeaway: string;
+}
+
+export interface SectorHighlight {
+  sector: string;
+  summary: string;
+  sentiment: 'Bullish' | 'Bearish' | 'Neutral';
+}
+
+export interface Briefing {
+  _id?: string;
+  id: string;
+  date: string;
+  title: string;
+  macro_pulse: string;
+  bullish_lookout: BriefingItem[];
+  bearish_lookout: BriefingItem[];
+  sector_highlights: SectorHighlight[];
+  action_plan: string;
+  raw_markdown?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface NewsResponse extends News {
