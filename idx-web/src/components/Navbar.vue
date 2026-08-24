@@ -23,6 +23,12 @@
           Daily Briefing
         </button>
         <button
+          :class="['tab-btn', { active: activeTab === 'screener' }]"
+          @click="$emit('select-tab', 'screener')"
+        >
+          Value Screener
+        </button>
+        <button
           :class="['tab-btn', { active: activeTab === 'news' }]"
           @click="$emit('select-tab', 'news')"
         >

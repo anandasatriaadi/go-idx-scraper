@@ -25,6 +25,11 @@
         :loading="loadingBriefing"
       />
 
+      <ValueScreenerView
+        v-else-if="activeTab === 'screener'"
+        @open-ticker-financials="selectedTickerForFinancials = $event"
+      />
+
       <NewsTerminalView
         v-else-if="activeTab === 'news'"
         :news="newsList"
@@ -53,6 +58,11 @@
       @filter-ticker="handleTickerClick"
     />
 
+    <TickerFinancialsModal
+      :ticker="selectedTickerForFinancials"
+      @close="selectedTickerForFinancials = null"
+    />
+
     <AuthModal
       v-if="showAuthModal"
       @close="showAuthModal = false"
@@ -69,6 +79,8 @@ import BriefingView from '../components/BriefingView.vue'
 import NewsTerminalView from '../components/NewsTerminalView.vue'
 import AnnouncementsView from '../components/AnnouncementsView.vue'
 import FinReportsView from '../components/FinReportsView.vue'
+import ValueScreenerView from '../components/ValueScreenerView.vue'
+import TickerFinancialsModal from '../components/TickerFinancialsModal.vue'
 import ArticleModal from '../components/ArticleModal.vue'
 import AuthModal from '../components/AuthModal.vue'
 import { useWatchlist } from '../composables/useWatchlist'
@@ -77,6 +89,7 @@ import type { Briefing, News, Announcement } from '../server/utils/types'
 const activeTab = ref('overview')
 const showAuthModal = ref(false)
 const selectedArticle = ref<News | null>(null)
+const selectedTickerForFinancials = ref<string | null>(null)
 const filteredTicker = ref('')
 
 const briefing = ref<Briefing | null>(null)
