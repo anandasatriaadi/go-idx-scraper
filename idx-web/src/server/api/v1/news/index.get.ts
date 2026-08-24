@@ -1,45 +1,23 @@
-import { findAllNews, type NewsFilter } from '../../../utils/news-repo'
-import { getAuthFromEvent } from '../../../utils/firebase-admin'
-import { getUserWatchlist } from '../../../utils/user-service'
+import { defineEventHandler, getQuery } from 'h3'
+import { findAllNewsPaginated } from '../../../utils/news-repo'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
-  
-  const filter: NewsFilter = {}
-  
-  if (query.date_gte) {
-    filter.date_gte = String(query.date_gte)
-  }
-  if (query.date_lte) {
-    filter.date_lte = String(query.date_lte)
-  }
-  if (query.priority) {
-    filter.priority = parseInt(String(query.priority), 10)
-  }
-  if (query.source) {
-    filter.source = String(query.source)
-  }
-  if (query.ticker) {
-    filter.ticker = String(query.ticker)
-  }
-  if (query.industry) {
-    filter.industry = String(query.industry)
-  }
-  
-  const newsList = await findAllNews(filter)
-  
-  let isWatched = false
-  const auth = getAuthFromEvent(event)
-  
-  if (auth) {
-    const watchlist = await getUserWatchlist(auth.uid)
-    isWatched = watchlist.length > 0
-  }
-  
-  const response = newsList.map(n => ({
-    ...n,
-    is_watched: isWatched,
-  }))
-  
-  return response
+  const limit = parseInt(String(query.limit || '20'), 10)
+  const page = parseInt(String(query.page || '1'), 10)
+  const skip = query.skip ? parseInt(String(query.skip), 10) : (page - 1) * limit
+
+  return await findAllNewsPaginated({
+    limit,
+    skip,
+    ticker: query.ticker ? String(query.ticker) : undefined,
+    sector: query.sector ? String(query.sector) : undefined,
+    subsector: query.subsector ? String(query.subsector) : undefined,
+    industry: query.industry ? String(query.industry) : undefined,
+    search: query.search ? String(query.search) : undefined,
+    priority: query.priority ? parseInt(String(query.priority), 10) : undefined,
+    date_gte: query.date_gte ? String(query.date_gte) : undefined,
+    date_lte: query.date_lte ? String(query.date_lte) : undefined,
+    source: query.source ? String(query.source) : undefined,
+  })
 })
