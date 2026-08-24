@@ -91,7 +91,14 @@
             </div>
           </div>
 
-          <!-- 2. Forensic Quality & Solvency Badges -->
+          <!-- 2. Interactive Historical Price & Benjamin Graham Valuation Bands Chart -->
+          <PriceValuationChart
+            :ticker="ticker"
+            :graham-number="latestStatement?.valuation?.graham_number"
+            :current-price="latestStatement?.valuation?.current_price"
+          />
+
+          <!-- 3. Forensic Quality & Solvency Badges -->
           <div class="card-section forensics-card">
             <h2 class="section-title font-mono">🛡️ FORENSIC HEALTH & MOAT QUALITY</h2>
             <div class="forensics-grid">
@@ -330,6 +337,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import PriceValuationChart from './PriceValuationChart.vue'
 import type { XBRLStatement, News } from '../server/utils/types'
 
 const props = defineProps<{
