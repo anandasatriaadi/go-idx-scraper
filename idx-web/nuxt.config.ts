@@ -5,6 +5,10 @@ export default defineNuxtConfig({
   modules: [],
   
   srcDir: 'src/',
+
+  experimental: {
+    appManifest: false,
+  },
   
   runtimeConfig: {
     firebaseCredentialsPath: process.env.FIREBASE_CREDENTIALS_PATH || '',
