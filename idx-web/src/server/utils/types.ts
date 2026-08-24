@@ -173,6 +173,46 @@ export interface ComputedRatios {
   altman_z_score: number;
 }
 
+export interface ValuationBands {
+  mean_pe: number;
+  std_dev_pe: number;
+  plus_2sd_pe: number;
+  plus_1sd_pe: number;
+  minus_1sd_pe: number;
+  minus_2sd_pe: number;
+  plus_2sd_price_pe: number;
+  plus_1sd_price_pe: number;
+  mean_price_pe: number;
+  minus_1sd_price_pe: number;
+  minus_2sd_price_pe: number;
+
+  mean_pb: number;
+  std_dev_pb: number;
+  plus_2sd_pb: number;
+  plus_1sd_pb: number;
+  minus_1sd_pb: number;
+  minus_2sd_pb: number;
+  plus_2sd_price_pb: number;
+  plus_1sd_price_pb: number;
+  mean_price_pb: number;
+  minus_1sd_price_pb: number;
+  minus_2sd_price_pb: number;
+}
+
+export interface TimingSignal {
+  score: number;
+  status: string;
+  rsi: number;
+  rsi_bullish_divergence: boolean;
+  rvol: number;
+  clv: number;
+  stopping_volume: boolean;
+  volume_dry_up: boolean;
+  vdu: number;
+  valuation_discount_zone?: string;
+  signals?: string[];
+}
+
 export interface ValuationMetrics {
   normalized_eps: number;
   normalized_bvps: number;
@@ -193,6 +233,8 @@ export interface ValuationMetrics {
   ev_to_ebitda?: number;
   earnings_yield_pct?: number;
   quick_ratio?: number;
+  valuation_bands?: ValuationBands;
+  timing_signal?: TimingSignal;
 }
 
 export interface XBRLStatement {
@@ -210,6 +252,8 @@ export interface XBRLStatement {
   facts?: FactMap;
   computed_ratios: ComputedRatios;
   valuation: ValuationMetrics;
+  valuation_bands?: ValuationBands;
+  timing_signal?: TimingSignal;
   created_at?: string;
   updated_at?: string;
 }
