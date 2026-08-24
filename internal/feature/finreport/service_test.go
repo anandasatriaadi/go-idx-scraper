@@ -59,4 +59,54 @@ func TestConstructXBRLReportURL(t *testing.T) {
 	if url2 != expected2 {
 		t.Errorf("Expected url:\n%s\nGot:\n%s", expected2, url2)
 	}
+
+	url3 := svc.ConstructXBRLReportURL(2024, "TW2", "TLKM", "instance.zip")
+	expected3 := "https://www.idx.co.id/Portals/0/StaticData/ListedCompanies/Corporate_Actions/New_Info_JSX/Jenis_Informasi/01_Laporan_Keuangan/02_Soft_Copy_Laporan_Keuangan//Laporan%20Keuangan%20Tahun%202024/TW2/TLKM/instance.zip"
+	if url3 != expected3 {
+		t.Errorf("Expected url:\n%s\nGot:\n%s", expected3, url3)
+	}
+
+	url4 := svc.ConstructXBRLReportURL(2023, "Audit", "BBCA", "")
+	expected4 := "https://www.idx.co.id/Portals/0/StaticData/ListedCompanies/Corporate_Actions/New_Info_JSX/Jenis_Informasi/01_Laporan_Keuangan/02_Soft_Copy_Laporan_Keuangan//Laporan%20Keuangan%20Tahun%202023/Audit/BBCA/instance.zip"
+	if url4 != expected4 {
+		t.Errorf("Expected url:\n%s\nGot:\n%s", expected4, url4)
+	}
+}
+
+func TestNormalizePeriod(t *testing.T) {
+	tests := []struct {
+		input              string
+		expectedPeriodStr  string
+		expectedModePeriod string
+	}{
+		{"1", "I", "TW1"},
+		{"I", "I", "TW1"},
+		{"TW1", "I", "TW1"},
+		{"Q1", "I", "TW1"},
+		{"2", "II", "TW2"},
+		{"II", "II", "TW2"},
+		{"TW2", "II", "TW2"},
+		{"Q2", "II", "TW2"},
+		{"3", "III", "TW3"},
+		{"III", "III", "TW3"},
+		{"TW3", "III", "TW3"},
+		{"Q3", "III", "TW3"},
+		{"4", "IV", "TW4"},
+		{"IV", "IV", "TW4"},
+		{"TW4", "IV", "TW4"},
+		{"Q4", "IV", "TW4"},
+		{"Audit", "Tahunan", "Audit"},
+		{"Tahunan", "Tahunan", "Audit"},
+		{"FY", "Tahunan", "Audit"},
+		{"tahunan", "Tahunan", "Audit"},
+		{"audit", "Tahunan", "Audit"},
+	}
+
+	for _, tt := range tests {
+		ps, mp := NormalizePeriod(tt.input)
+		if ps != tt.expectedPeriodStr || mp != tt.expectedModePeriod {
+			t.Errorf("NormalizePeriod(%q) = (%q, %q), expected (%q, %q)",
+				tt.input, ps, mp, tt.expectedPeriodStr, tt.expectedModePeriod)
+		}
+	}
 }

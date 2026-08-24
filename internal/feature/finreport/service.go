@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -55,26 +56,34 @@ func ParseFinancialStatementFilename(filename string) (year int, periodString, i
 	return year, matches[2], matches[3], nil
 }
 
-func (s *Service) ConstructReportURL(year int, periodString, issuerCode string) string {
-	var modePeriod string
-	if periodString == "Tahunan" {
-		modePeriod = "Audit"
-	} else {
-		modePeriod = "TW" + romanToNumeral(periodString)
+func NormalizePeriod(period string) (periodString string, modePeriod string) {
+	p := strings.TrimSpace(strings.ToUpper(period))
+	switch p {
+	case "I", "1", "TW1", "Q1":
+		return "I", "TW1"
+	case "II", "2", "TW2", "Q2":
+		return "II", "TW2"
+	case "III", "3", "TW3", "Q3":
+		return "III", "TW3"
+	case "IV", "4", "TW4", "Q4":
+		return "IV", "TW4"
+	case "TAHUNAN", "AUDIT", "FY":
+		return "Tahunan", "Audit"
+	default:
+		return period, "TW" + romanToNumeral(period)
 	}
-	filename := fmt.Sprintf("FinancialStatement-%d-%s-%s.xlsx", year, periodString, issuerCode)
+}
+
+func (s *Service) ConstructReportURL(year int, periodString, issuerCode string) string {
+	ps, modePeriod := NormalizePeriod(periodString)
+	filename := fmt.Sprintf("FinancialStatement-%d-%s-%s.xlsx", year, ps, issuerCode)
 	url := fmt.Sprintf("https://www.idx.co.id/Portals/0/StaticData/ListedCompanies/Corporate_Actions/New_Info_JSX/Jenis_Informasi/01_Laporan_Keuangan/02_Soft_Copy_Laporan_Keuangan//Laporan%%20Keuangan%%20Tahun%%20%d/%s/%s/%s",
 		year, modePeriod, issuerCode, filename)
 	return url
 }
 
 func (s *Service) ConstructXBRLReportURL(year int, periodString, issuerCode string, fileType string) string {
-	var modePeriod string
-	if periodString == "Tahunan" {
-		modePeriod = "Audit"
-	} else {
-		modePeriod = "TW" + romanToNumeral(periodString)
-	}
+	_, modePeriod := NormalizePeriod(periodString)
 	if fileType == "" {
 		fileType = "instance.zip"
 	}

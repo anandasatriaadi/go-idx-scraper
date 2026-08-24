@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -16,8 +17,10 @@ import (
 	br "github.com/anandasatriaadi/go-idx-scraper/internal/browser"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/finreport"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/xbrl"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/db/mongo"
+	infra "github.com/anandasatriaadi/go-idx-scraper/internal/infra/xbrl"
 	"github.com/tebeka/selenium"
 	"go.uber.org/zap"
 )
@@ -37,10 +40,25 @@ func main() {
 }
 
 func run() error {
-	var configPath string
-	var noHeadless bool
+	var (
+		configPath   string
+		noHeadless   bool
+		tickerFlag   string
+		yearsFlag    string
+		periodsFlag  string
+		fileTypeFlag string
+		parseFlag    bool
+		cleanFlag    bool
+	)
+
 	flag.StringVar(&configPath, "config", "config/config.yml", "Path to configuration file")
 	flag.BoolVar(&noHeadless, "no-headless", false, "Disable headless mode for browser")
+	flag.StringVar(&tickerFlag, "ticker", "", "Single ticker or comma-separated list (e.g. BBRI or BBRI,TLKM)")
+	flag.StringVar(&yearsFlag, "years", "", "Comma-separated years or range (e.g. 2021,2022,2023 or 2021-2025)")
+	flag.StringVar(&periodsFlag, "periods", "", "Comma-separated periods (e.g. TW1,TW2,TW3,Audit or I,II,III,Tahunan)")
+	flag.StringVar(&fileTypeFlag, "file-type", "instance.zip", "File type to download: instance.zip, inlineXBRL.zip, or .xlsx")
+	flag.BoolVar(&parseFlag, "parse", false, "Stream & parse each downloaded XBRL/zip file into MongoDB xbrl_statements")
+	flag.BoolVar(&cleanFlag, "clean", false, "Clear download directory before starting")
 	flag.Parse()
 
 	logger, err := helper.NewLogger("downloader")
@@ -57,6 +75,15 @@ func run() error {
 
 	if noHeadless {
 		cfg.SetHeadless(false)
+	}
+
+	if err := os.MkdirAll(cfg.Paths.DownloadDir, 0755); err != nil {
+		logger.Error("Failed to create download directory", zap.Error(err))
+		return err
+	}
+	if err := os.MkdirAll(cfg.Paths.CheckDir, 0755); err != nil {
+		logger.Error("Failed to create check directory", zap.Error(err))
+		return err
 	}
 
 	browser, err := br.SetupSelenium(cfg)
@@ -77,49 +104,268 @@ func run() error {
 		cancel()
 	}()
 
-	issuerList, err := helper.LoadCurrent(cfg.Paths.IssuerList, logger)
-	if err != nil {
-		logger.Error("Failed to load issuer list", zap.Error(err))
-		return err
-	}
-
 	db, err := mongo.NewClient(logger)
 	if err != nil {
-		logger.Error("Failed to create database", zap.Error(err))
+		logger.Error("Failed to create database client", zap.Error(err))
 		return err
 	}
 	dbInstance := db.Database(cfg.Database.DbName)
 	fRepo := mongo.NewFinancialReportRepository(dbInstance)
 	fSvc := finreport.NewService(fRepo, logger)
+	xbrlRepo := mongo.NewXBRLRepository(dbInstance)
 
-	clearDownloadDir(cfg, logger)
-	updatedStocks := processVersionUpdates(ctx, fSvc, cfg, browser.Driver, logger)
-	err = helper.MoveFiles(logger, cfg)
-	if err != nil {
-		logger.Error("Failed to move files", zap.Error(err))
+	if cleanFlag {
+		logger.Info("Cleaning download directory as requested by -clean")
+		clearDownloadDir(cfg, logger)
 	}
 
-	clearDownloadDir(cfg, logger)
-	newStocks := processStocks(issuerList, cfg, ctx, browser.Driver, logger, fSvc)
-
-	if len(newStocks) == 0 && len(updatedStocks) == 0 {
-		logger.Info("No new files downloaded")
-		return nil
+	// Parse tickers
+	var tickers []string
+	if tickerFlag != "" {
+		for _, t := range strings.Split(tickerFlag, ",") {
+			t = strings.ToUpper(strings.TrimSpace(t))
+			if t != "" {
+				tickers = append(tickers, t)
+			}
+		}
+	} else {
+		loaded, err := helper.LoadCurrent(cfg.Paths.IssuerList, logger)
+		if err != nil {
+			logger.Error("Failed to load issuer list", zap.Error(err))
+			return err
+		}
+		tickers = loaded
 	}
 
-	err = helper.MoveFiles(logger, cfg)
+	// Parse years
+	years, err := parseYears(yearsFlag, cfg.Download.Year)
 	if err != nil {
-		logger.Error("Failed to move files", zap.Error(err))
+		logger.Error("Failed to parse years", zap.Error(err))
+		return err
 	}
 
-	content, err := helper.GenerateNewReportEmail(newStocks, updatedStocks, cfg)
-	if err != nil {
-		logger.Error("Failed to generate email content", zap.Error(err))
-	} else if err := helper.SendMail(content, "", cfg); err != nil {
-		logger.Error("Failed to send email", zap.Error(err))
+	// Parse periods
+	periods := parsePeriods(periodsFlag, cfg, logger)
+
+	fileType := strings.TrimSpace(fileTypeFlag)
+	if fileType == "" {
+		fileType = "instance.zip"
+	}
+	isXlsx := strings.EqualFold(fileType, ".xlsx") || strings.EqualFold(fileType, "xlsx")
+
+	logger.Info("Starting download job",
+		zap.Int("tickers_count", len(tickers)),
+		zap.Ints("years", years),
+		zap.Strings("periods", periods),
+		zap.String("file_type", fileType),
+		zap.Bool("auto_parse", parseFlag),
+	)
+
+	// In default batch xlsx mode (no explicit ticker/years/periods filters), process version updates first
+	var updatedStocks []string
+	if tickerFlag == "" && yearsFlag == "" && periodsFlag == "" && isXlsx {
+		clearDownloadDir(cfg, logger)
+		updatedStocks = processVersionUpdates(ctx, fSvc, cfg, browser.Driver, logger)
+		if err := helper.MoveFiles(logger, cfg); err != nil {
+			logger.Error("Failed to move files", zap.Error(err))
+		}
+		clearDownloadDir(cfg, logger)
+	}
+
+	downloadedCount := 0
+	for _, stockName := range tickers {
+		select {
+		case <-ctx.Done():
+			logger.Info("Shutdown requested during stock processing")
+			return nil
+		default:
+		}
+
+		for _, year := range years {
+			select {
+			case <-ctx.Done():
+				logger.Info("Shutdown requested during stock processing")
+				return nil
+			default:
+			}
+
+			for _, period := range periods {
+				select {
+				case <-ctx.Done():
+					logger.Info("Shutdown requested during stock processing")
+					return nil
+				default:
+				}
+
+				ps, modePeriod := finreport.NormalizePeriod(period)
+
+				var url string
+				var targetFilename string
+				var expectedDownloadName string
+
+				if isXlsx {
+					url = fSvc.ConstructReportURL(year, ps, stockName)
+					targetFilename = fmt.Sprintf("FinancialStatement-%d-%s-%s.xlsx", year, ps, stockName)
+					expectedDownloadName = targetFilename
+				} else {
+					url = fSvc.ConstructXBRLReportURL(year, ps, stockName, fileType)
+					targetFilename = fmt.Sprintf("FinancialStatement-%d-%s-%s-%s", year, modePeriod, stockName, fileType)
+					expectedDownloadName = fileType
+				}
+
+				targetPath := filepath.Join(cfg.Paths.DownloadDir, targetFilename)
+				checkPath := filepath.Join(cfg.Paths.CheckDir, targetFilename)
+
+				if !cleanFlag {
+					if _, err := os.Stat(targetPath); err == nil {
+						logger.Info("File already exists in download directory, skipping", zap.String("file", targetFilename))
+						if parseFlag && !isXlsx {
+							parseAndUpsertXBRL(ctx, targetPath, xbrlRepo, logger)
+						}
+						continue
+					}
+					if _, err := os.Stat(checkPath); err == nil {
+						logger.Info("File already exists in check directory, skipping", zap.String("file", targetFilename))
+						if parseFlag && !isXlsx {
+							parseAndUpsertXBRL(ctx, checkPath, xbrlRepo, logger)
+						}
+						continue
+					}
+				}
+
+				logger.Info("Downloading filing",
+					zap.String("ticker", stockName),
+					zap.Int("year", year),
+					zap.String("period", ps),
+					zap.String("file", targetFilename),
+					zap.String("url", url),
+				)
+
+				tempExpectedPath := filepath.Join(cfg.Paths.DownloadDir, expectedDownloadName)
+				_ = os.Remove(tempExpectedPath)
+
+				if err := downloadFile(url, browser.Driver, logger); err != nil {
+					logger.Warn("Failed to download filing",
+						zap.String("ticker", stockName),
+						zap.Int("year", year),
+						zap.String("period", ps),
+						zap.Error(err),
+					)
+					continue
+				}
+
+				if err := waitForDownloadedFile(cfg.Paths.DownloadDir, expectedDownloadName, targetPath, 15*time.Second, logger); err != nil {
+					logger.Warn("Download completion or rename failed",
+						zap.String("ticker", stockName),
+						zap.Int("year", year),
+						zap.String("period", ps),
+						zap.Error(err),
+					)
+					continue
+				}
+
+				logger.Info("Successfully downloaded and saved filing", zap.String("file", targetFilename))
+				downloadedCount++
+
+				if parseFlag && !isXlsx {
+					parseAndUpsertXBRL(ctx, targetPath, xbrlRepo, logger)
+				}
+			}
+		}
+	}
+
+	logger.Info("Download process finished", zap.Int("total_downloaded", downloadedCount))
+
+	if tickerFlag == "" && yearsFlag == "" && periodsFlag == "" && isXlsx {
+		if err := helper.MoveFiles(logger, cfg); err != nil {
+			logger.Error("Failed to move files", zap.Error(err))
+		}
+
+		newStocks := helper.FindDownloadedStocks(cfg)
+		if len(newStocks) > 0 || len(updatedStocks) > 0 {
+			content, err := helper.GenerateNewReportEmail(newStocks, updatedStocks, cfg)
+			if err != nil {
+				logger.Error("Failed to generate email content", zap.Error(err))
+			} else if err := helper.SendMail(content, "", cfg); err != nil {
+				logger.Error("Failed to send email", zap.Error(err))
+			}
+		}
 	}
 
 	return nil
+}
+
+func parseYears(yearsFlag string, defaultYear string) ([]int, error) {
+	target := strings.TrimSpace(yearsFlag)
+	if target == "" {
+		target = strings.TrimSpace(defaultYear)
+	}
+	if target == "" {
+		return nil, fmt.Errorf("no year specified")
+	}
+
+	var years []int
+	seen := make(map[int]bool)
+	parts := strings.Split(target, ",")
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if strings.Contains(p, "-") {
+			rangeParts := strings.Split(p, "-")
+			if len(rangeParts) != 2 {
+				return nil, fmt.Errorf("invalid year range: %s", p)
+			}
+			start, err1 := strconv.Atoi(strings.TrimSpace(rangeParts[0]))
+			end, err2 := strconv.Atoi(strings.TrimSpace(rangeParts[1]))
+			if err1 != nil || err2 != nil {
+				return nil, fmt.Errorf("invalid year range numbers: %s", p)
+			}
+			step := 1
+			if start > end {
+				step = -1
+			}
+			for y := start; ; y += step {
+				if !seen[y] {
+					seen[y] = true
+					years = append(years, y)
+				}
+				if y == end {
+					break
+				}
+			}
+		} else {
+			y, err := strconv.Atoi(p)
+			if err != nil {
+				return nil, fmt.Errorf("invalid year: %s", p)
+			}
+			if !seen[y] {
+				seen[y] = true
+				years = append(years, y)
+			}
+		}
+	}
+	return years, nil
+}
+
+func parsePeriods(periodsFlag string, cfg *config.Config, logger *zap.Logger) []string {
+	if strings.TrimSpace(periodsFlag) != "" {
+		var periods []string
+		for _, p := range strings.Split(periodsFlag, ",") {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				periods = append(periods, p)
+			}
+		}
+		return periods
+	}
+
+	if cfg.Download.Mode == "AUDIT" || strings.EqualFold(cfg.Download.Mode, "audit") {
+		return []string{"Tahunan"}
+	}
+	period, _ := preparePeriodParams(cfg, logger)
+	return []string{period}
 }
 
 func preparePeriodParams(cfg *config.Config, logger *zap.Logger) (period string, modePeriod string) {
@@ -133,19 +379,19 @@ func preparePeriodParams(cfg *config.Config, logger *zap.Logger) (period string,
 	return period, modePeriod
 }
 
-func checkPageTitleForErrors(title, stockName string, logger *zap.Logger) error {
+func checkPageTitleForErrors(title, url string, logger *zap.Logger) error {
 	titleLower := strings.ToLower(title)
 	for _, errorStr := range errorTitles {
 		if strings.Contains(titleLower, errorStr) {
 			switch errorStr {
 			case "404", "document":
-				logger.Info("Stock not found", zap.String("stock", stockName), zap.String("title", titleLower))
+				logger.Info("Stock document not found", zap.String("url", url), zap.String("title", titleLower))
 				return fmt.Errorf("not found")
 			case "503":
-				logger.Info("Server error", zap.String("stock", stockName), zap.String("title", titleLower))
+				logger.Info("Server error", zap.String("url", url), zap.String("title", titleLower))
 				return fmt.Errorf("server error")
 			case "attention required", "just a moment":
-				logger.Info("Bot detector", zap.String("stock", stockName), zap.String("title", titleLower))
+				logger.Info("Bot detector encountered", zap.String("url", url), zap.String("title", titleLower))
 				return fmt.Errorf("bot detector")
 			}
 		}
@@ -153,7 +399,7 @@ func checkPageTitleForErrors(title, stockName string, logger *zap.Logger) error 
 	return nil
 }
 
-func downloadFile(url, filePath string, driver selenium.WebDriver, logger *zap.Logger) error {
+func downloadFile(url string, driver selenium.WebDriver, logger *zap.Logger) error {
 	if err := driver.Get(url); err != nil {
 		return fmt.Errorf("failed to navigate: %w", err)
 	}
@@ -161,7 +407,7 @@ func downloadFile(url, filePath string, driver selenium.WebDriver, logger *zap.L
 	title, _ := driver.Title()
 	logger.Info("Browser title retrieved", zap.String("title", title))
 
-	if err := checkPageTitleForErrors(title, filepath.Base(filePath), logger); err != nil {
+	if err := checkPageTitleForErrors(title, url, logger); err != nil {
 		if err := driver.Get("data:,"); err != nil {
 			logger.Warn("Failed to navigate to blank page", zap.Error(err))
 		}
@@ -173,6 +419,89 @@ func downloadFile(url, filePath string, driver selenium.WebDriver, logger *zap.L
 	}
 
 	return nil
+}
+
+func waitForDownloadedFile(downloadDir string, expectedName string, targetPath string, timeout time.Duration, logger *zap.Logger) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		time.Sleep(300 * time.Millisecond)
+
+		// Wait while any Chrome download is in progress
+		crdownloadFiles, _ := filepath.Glob(filepath.Join(downloadDir, "*.crdownload"))
+		if len(crdownloadFiles) > 0 {
+			continue
+		}
+
+		// Check if targetPath already exists
+		if info, err := os.Stat(targetPath); err == nil && info.Size() > 0 {
+			return nil
+		}
+
+		// Check if expectedName exists in download directory
+		expectedPath := filepath.Join(downloadDir, expectedName)
+		if info, err := os.Stat(expectedPath); err == nil && info.Size() > 0 {
+			if expectedPath != targetPath {
+				if err := os.Rename(expectedPath, targetPath); err != nil {
+					if err := copyAndRemove(expectedPath, targetPath); err != nil {
+						return fmt.Errorf("moving downloaded file %s to %s: %w", expectedPath, targetPath, err)
+					}
+				}
+			}
+			return nil
+		}
+
+		// Look for numbered variant (e.g., instance (1).zip)
+		entries, err := os.ReadDir(downloadDir)
+		if err == nil {
+			baseExpected := strings.TrimSuffix(expectedName, filepath.Ext(expectedName))
+			extExpected := filepath.Ext(expectedName)
+			for _, entry := range entries {
+				if entry.IsDir() || strings.HasSuffix(entry.Name(), ".crdownload") {
+					continue
+				}
+				fullEntryPath := filepath.Join(downloadDir, entry.Name())
+				if fullEntryPath == targetPath {
+					if info, err := os.Stat(targetPath); err == nil && info.Size() > 0 {
+						return nil
+					}
+				}
+				if strings.HasPrefix(entry.Name(), baseExpected) && strings.HasSuffix(entry.Name(), extExpected) {
+					if info, err := os.Stat(fullEntryPath); err == nil && info.Size() > 0 {
+						if err := os.Rename(fullEntryPath, targetPath); err != nil {
+							if err := copyAndRemove(fullEntryPath, targetPath); err != nil {
+								return fmt.Errorf("moving variant file %s to %s: %w", fullEntryPath, targetPath, err)
+							}
+						}
+						return nil
+					}
+				}
+			}
+		}
+	}
+	return fmt.Errorf("timeout waiting for %s to download", expectedName)
+}
+
+func copyAndRemove(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	if _, err = io.Copy(out, in); err != nil {
+		return err
+	}
+	if err = out.Sync(); err != nil {
+		return err
+	}
+	_ = in.Close()
+	return os.Remove(src)
 }
 
 func clearDownloadDir(cfg *config.Config, logger *zap.Logger) {
@@ -212,10 +541,12 @@ func processVersionUpdates(ctx context.Context, fSvc *finreport.Service, cfg *co
 		logger.Info("Processing updated report", zap.String("issuer", r.IssuerCode), zap.Int("year", r.Year), zap.String("period", r.PeriodString))
 
 		url := fSvc.ConstructReportURL(r.Year, r.PeriodString, r.IssuerCode)
-		if err := downloadFile(url, filePath, driver, logger); err != nil {
+		if err := downloadFile(url, driver, logger); err != nil {
 			logger.Warn("Failed to download updated report", zap.String("issuer", r.IssuerCode), zap.Error(err))
 			continue
 		}
+
+		_ = waitForDownloadedFile(cfg.Paths.DownloadDir, filename, filePath, 15*time.Second, logger)
 
 		if err := fSvc.MarkAsDownloaded(ctx, r.ID, url); err != nil {
 			logger.Error("Failed to mark as downloaded", zap.String("issuer", r.IssuerCode), zap.Error(err))
@@ -227,69 +558,41 @@ func processVersionUpdates(ctx context.Context, fSvc *finreport.Service, cfg *co
 	return updatedStocks
 }
 
-func processStocks(issuerList []string, cfg *config.Config, ctx context.Context, driver selenium.WebDriver, logger *zap.Logger, fSvc *finreport.Service) []string {
-	period, _ := preparePeriodParams(cfg, logger)
+func parseAndUpsertXBRL(ctx context.Context, filePath string, repo xbrl.Repository, logger *zap.Logger) {
+	var stmt *xbrl.Statement
+	var err error
 
-	yearInt, err := strconv.Atoi(cfg.Download.Year)
+	lowerPath := strings.ToLower(filePath)
+	if strings.HasSuffix(lowerPath, ".zip") {
+		stmt, err = infra.ParseInstanceZip(filePath)
+	} else if strings.HasSuffix(lowerPath, ".xbrl") || strings.HasSuffix(lowerPath, ".xml") {
+		f, oErr := os.Open(filePath)
+		if oErr == nil {
+			stmt, err = infra.ParseInstanceXML(f)
+			f.Close()
+		} else {
+			err = oErr
+		}
+	} else {
+		return
+	}
+
 	if err != nil {
-		logger.Error("Invalid download year", zap.String("year", cfg.Download.Year), zap.Error(err))
-		return nil
+		logger.Warn("Failed to parse XBRL file", zap.String("path", filePath), zap.Error(err))
+		return
 	}
 
-	serverErrorOccurred := true
-	loopCount := 0
-
-	for serverErrorOccurred && loopCount < maxServerErrorRetry {
-		loopCount++
-		serverErrorOccurred = false
-
-		for _, stockName := range issuerList {
-			stockName = strings.TrimSpace(stockName)
-			if stockName == "" {
-				continue
-			}
-
-			select {
-			case <-ctx.Done():
-				logger.Info("Shutdown requested during stock processing")
-				return nil
-			default:
-			}
-
-			var periodString string
-			if cfg.Download.Mode == "AUDIT" {
-				periodString = "Tahunan"
-			} else {
-				periodString = period
-			}
-			filename := fmt.Sprintf("FinancialStatement-%s-%s-%s.xlsx", cfg.Download.Year, periodString, stockName)
-
-			checkPath := filepath.Join(cfg.Paths.CheckDir, filename)
-			filePath := filepath.Join(cfg.Paths.DownloadDir, filename)
-			if _, err := os.Stat(checkPath); err == nil {
-				continue
-			}
-			if _, err := os.Stat(filePath); err == nil {
-				continue
-			}
-
-			logger.Info("Processing stock", zap.String("stock", stockName))
-			url := fSvc.ConstructReportURL(yearInt, periodString, stockName)
-
-			if err := downloadFile(url, filePath, driver, logger); err != nil {
-				if err.Error() == "server error" {
-					serverErrorOccurred = true
-				}
-				logger.Warn("Failed to trigger download", zap.String("stock", stockName), zap.String("err", err.Error()))
-				continue
-			}
-		}
-
-		if serverErrorOccurred && loopCount < maxServerErrorRetry {
-			logger.Info("Server error occurred, retrying", zap.Int("attempt", loopCount))
-			time.Sleep(retryDelay)
-		}
+	if err := xbrl.ComputeValuationAndRatios(stmt, nil, 0); err != nil {
+		logger.Warn("Valuation calculation failed", zap.String("ticker", stmt.Ticker), zap.Error(err))
 	}
 
-	return helper.FindDownloadedStocks(cfg)
+	if err := repo.Upsert(ctx, stmt); err != nil {
+		logger.Error("Failed to upsert XBRL statement into MongoDB", zap.String("ticker", stmt.Ticker), zap.Error(err))
+	} else {
+		logger.Info("Successfully parsed & ingested XBRL statement into MongoDB",
+			zap.String("ticker", stmt.Ticker),
+			zap.Int("year", stmt.Year),
+			zap.String("period", stmt.Period),
+		)
+	}
 }
