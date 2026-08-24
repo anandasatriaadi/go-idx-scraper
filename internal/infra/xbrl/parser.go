@@ -227,7 +227,7 @@ func ParseInstanceXML(r io.Reader) (*domain.Statement, error) {
 
 							// Populate core financials for primary contexts
 							if contextRef == "CurrentYearInstant" || contextRef == "CurrentYearDuration" {
-								assignCoreMetric(&stmt.Core, local, numVal)
+								assignCoreMetric(stmt, local, numVal)
 							}
 						}
 					}
@@ -307,7 +307,8 @@ func assignDEIMetadata(s *domain.Statement, tag, val string) {
 	}
 }
 
-func assignCoreMetric(c *domain.CoreFinancials, tag string, val float64) {
+func assignCoreMetric(stmt *domain.Statement, tag string, val float64) {
+	c := &stmt.Core
 	switch tag {
 	case "Assets":
 		c.TotalAssets = val
@@ -355,6 +356,10 @@ func assignCoreMetric(c *domain.CoreFinancials, tag string, val float64) {
 		c.DividendsPaid = val
 	case "WeightedAverageShares", "NumberOfIssuedAndFullyPaidShares":
 		c.SharesOutstanding = val
+	case "BasicEarningsLossPerShareFromContinuingOperations", "BasicEarningsLossPerShare", "DilutedEarningsLossPerShareFromContinuingOperations", "DilutedEarningsLossPerShare":
+		if stmt.Valuation.NormalizedEPS == 0 && val > 0 {
+			stmt.Valuation.NormalizedEPS = val
+		}
 	}
 }
 

@@ -3,7 +3,7 @@
     <!-- Top Navbar -->
     <Navbar
       :active-tab="activeTab"
-      @select-tab="activeTab = $event"
+      @select-tab="setTab"
       @open-auth="showAuthModal = true"
       @search-ticker="handleGlobalSearch"
     />
@@ -27,7 +27,7 @@
 
       <ValueScreenerView
         v-else-if="activeTab === 'screener'"
-        @open-ticker-financials="selectedTickerForFinancials = $event"
+        @open-ticker-financials="openTicker"
       />
 
       <NewsTerminalView
@@ -48,6 +48,7 @@
         v-else-if="activeTab === 'reports'"
         :reports="reportsList"
         :loading="loadingReports"
+        @open-ticker-financials="openTicker"
       />
     </main>
 
@@ -60,7 +61,7 @@
 
     <TickerFinancialsModal
       :ticker="selectedTickerForFinancials"
-      @close="selectedTickerForFinancials = null"
+      @close="closeTicker"
     />
 
     <AuthModal
@@ -72,7 +73,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import Navbar from '../components/Navbar.vue'
 import OverviewView from '../components/OverviewView.vue'
 import BriefingView from '../components/BriefingView.vue'
@@ -93,11 +94,14 @@ interface PaginatedResponse<T> {
   total_pages: number
 }
 
-const activeTab = ref('overview')
+const route = useRoute()
+const router = useRouter()
+
+const activeTab = ref((route.query.tab as string) || 'overview')
 const showAuthModal = ref(false)
 const selectedArticle = ref<News | null>(null)
-const selectedTickerForFinancials = ref<string | null>(null)
-const filteredTicker = ref('')
+const selectedTickerForFinancials = ref<string | null>((route.query.ticker as string) || null)
+const filteredTicker = ref((route.query.ticker as string) || '')
 
 const briefing = ref<Briefing | null>(null)
 const newsList = ref<News[]>([])
@@ -110,6 +114,34 @@ const loadingAnnouncements = ref(true)
 const loadingReports = ref(true)
 
 const { fetchWatchlist } = useWatchlist()
+
+const setTab = (tab: string) => {
+  activeTab.value = tab
+  router.push({ query: { ...route.query, tab } })
+}
+
+const openTicker = (ticker: string) => {
+  const t = ticker.toUpperCase().trim()
+  selectedTickerForFinancials.value = t
+  filteredTicker.value = t
+  router.push({ query: { ...route.query, ticker: t } })
+}
+
+const closeTicker = () => {
+  selectedTickerForFinancials.value = null
+  const q = { ...route.query }
+  delete q.ticker
+  router.push({ query: q })
+}
+
+const handleGlobalSearch = (ticker: string) => {
+  openTicker(ticker)
+}
+
+const handleTickerClick = (ticker: string) => {
+  selectedArticle.value = null
+  openTicker(ticker)
+}
 
 const loadData = async () => {
   // Fetch Latest Briefing
@@ -174,20 +206,24 @@ const loadData = async () => {
   }
 }
 
-const handleGlobalSearch = (ticker: string) => {
-  filteredTicker.value = ticker
-  activeTab.value = 'news'
-}
-
-const handleTickerClick = (ticker: string) => {
-  selectedArticle.value = null
-  filteredTicker.value = ticker
-  activeTab.value = 'news'
-}
-
 const onAuthenticated = () => {
   fetchWatchlist()
 }
+
+watch(() => route.query.tab, (newTab) => {
+  if (newTab && typeof newTab === 'string') {
+    activeTab.value = newTab
+  }
+})
+
+watch(() => route.query.ticker, (newTicker) => {
+  if (newTicker && typeof newTicker === 'string') {
+    selectedTickerForFinancials.value = newTicker.toUpperCase().trim()
+    filteredTicker.value = newTicker.toUpperCase().trim()
+  } else if (!newTicker) {
+    selectedTickerForFinancials.value = null
+  }
+})
 
 onMounted(() => {
   loadData()

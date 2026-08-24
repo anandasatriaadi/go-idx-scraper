@@ -42,7 +42,9 @@
         </thead>
         <tbody>
           <tr v-for="item in items" :key="item.id || item._id">
-            <td class="font-mono issuer-col">${{ item.issuer_code }}</td>
+            <td class="font-mono issuer-col clickable" @click="$emit('open-ticker-financials', item.issuer_code)" title="Inspect 360° Financials">
+              ${{ item.issuer_code }} 🔍
+            </td>
             <td class="font-mono">{{ item.year || '-' }}</td>
             <td class="font-mono">{{ item.quarter ? 'Q' + item.quarter : (item.period_string || 'Annual') }}</td>
             <td>
@@ -103,6 +105,10 @@ const page = ref(1)
 const limit = ref(20)
 const total = ref(0)
 const totalPages = ref(1)
+defineEmits<{
+  (e: 'open-ticker-financials', ticker: string): void
+}>()
+
 const search = ref('')
 
 let searchDebounce: ReturnType<typeof setTimeout> | null = null

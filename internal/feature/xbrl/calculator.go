@@ -121,6 +121,7 @@ func ComputeValuationAndRatios(stmt *Statement, priorStmt *Statement, currentSto
 	shares := c.SharesOutstanding
 	if shares <= 1 && v.NormalizedEPS > 0 && c.NetIncome > 0 {
 		shares = (c.NetIncome * fxRate) / v.NormalizedEPS
+		c.SharesOutstanding = shares
 	}
 	if shares <= 0 {
 		shares = 1.0

@@ -311,9 +311,13 @@ func parseExcelIncomeStatement(f *excelize.File, stmt *domain.Statement) {
 			if stmt.Core.NetIncome == 0 {
 				stmt.Core.NetIncome = val * stmt.Metadata.RoundingMultiplier
 			}
-		case strings.Contains(label, "jumlah rata-rata tertimbang saham") || strings.Contains(label, "weighted average number of shares"):
-			if stmt.Core.SharesOutstanding <= 1 {
+		case strings.Contains(label, "jumlah rata-rata tertimbang saham") || strings.Contains(label, "weighted average number of shares") || strings.Contains(label, "jumlah saham"):
+			if stmt.Core.SharesOutstanding <= 1 && val > 0 {
 				stmt.Core.SharesOutstanding = val
+			}
+		case strings.Contains(label, "laba per saham") || strings.Contains(label, "earnings per share") || strings.Contains(label, "laba (rugi) per saham"):
+			if stmt.Valuation.NormalizedEPS == 0 && val > 0 {
+				stmt.Valuation.NormalizedEPS = val
 			}
 		}
 	}
