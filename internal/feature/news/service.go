@@ -43,13 +43,14 @@ func (s *Service) FindByID(ctx context.Context, id bson.ObjectID) (*News, error)
 type NewsSummary struct {
 	Title              string   `json:"title" jsonschema:"description=An updated engaging and objective title capturing the essence of the article"`
 	Summary            string   `json:"summary" jsonschema:"description=Concise 3-sentence summary highlighting financial facts figures and immediate market implications"`
-	Priority           int      `json:"priority" jsonschema:"description=Market impact priority from 1 (highest market urgency/impact) to 10 (routine/low market impact)"`
-	ValueScore         int      `json:"value_score" jsonschema:"description=Fundamental value investing impact score strictly between -10 and +10 (-10 is severe fundamental impairment, 0 is neutral/macro noise, +10 is massive fundamental value creation)"`
+	Priority           int      `json:"priority" jsonschema:"description=Market impact priority from 1 (highest market urgency) to 10 (routine)"`
+	ValueScore         int      `json:"value_score" jsonschema:"description=Fundamental value investing impact score strictly between -10 and +10"`
 	ImpactDirection    string   `json:"impact_direction" jsonschema:"enum=Bullish,enum=Bearish,enum=Neutral,description=Directional impact on underlying business intrinsic value"`
-	InvestmentTakeaway string   `json:"investment_takeaway" jsonschema:"description=1-2 sentence actionable takeaway strictly from the perspective of a disciplined long-term value investor focusing on moat, capital allocation, cash flows, and intrinsic value"`
-	Tickers            []string `json:"tickers" jsonschema:"description=List of 4-letter IDX stock ticker symbols explicitly mentioned or directly affected (e.g. ['BBRI', 'BBCA']). Empty array if none."`
-	Industry           string   `json:"industry" jsonschema:"description=Primary industry or sector classification (e.g. Banking, Poultry, Mining, Energy, Consumer Goods, Infrastructure, Technology, Macroeconomics)"`
-	IsIndustryWide     bool     `json:"is_industry_wide" jsonschema:"description=True if the news affects an entire industry sector or macroeconomic policy rather than just one individual company"`
+	InvestmentTakeaway string   `json:"investment_takeaway" jsonschema:"description=1-2 sentence actionable takeaway for a disciplined long-term value investor"`
+	Tickers            []string `json:"tickers" jsonschema:"description=List of 4-letter IDX stock ticker symbols (e.g. ['BBRI', 'BBCA']). Empty array if none."`
+	Sector             string   `json:"sector" jsonschema:"enum=A. Energy,enum=B. Basic Materials,enum=C. Industrials,enum=D. Consumer Non-Cyclicals,enum=E. Consumer Cyclicals,enum=F. Healthcare,enum=G. Financials,enum=H. Properties and Real Estate,enum=I. Technology,enum=J. Infrastructures,enum=K. Transportation and Logistic,enum=Macroeconomics,description=Official IDX Industrial Classification (IDX-IC) Primary Sector"`
+	Subsector          string   `json:"subsector" jsonschema:"enum=A1. Oil, Gas, and Coal,enum=A2. Alternative Energy,enum=B1. Basic Materials,enum=C1. Industrial Goods,enum=C2. Industrial Services,enum=C3. Multi-sector Holdings,enum=D1. Food and Staples Retailing,enum=D2. Food and Beverage,enum=D3. Tobacco,enum=D4. Nondurable Household Products,enum=E1. Automobiles and Components,enum=E2. Household Goods,enum=E3. Leisure Goods,enum=E4. Apparel and Luxury Goods,enum=E5. Consumer Services,enum=E6. Media and Entertainment,enum=E7. Retailing,enum=F1. Healthcare Equipment & Providers,enum=F2. Pharmaceuticals & Health Care Research,enum=G1. Banks,enum=G2. Financing Service,enum=G3. Investment Service,enum=G4. Insurance,enum=G5. Holding and Investment Companies,enum=H1. Properties & Real Estate,enum=I1. Software & IT Services,enum=I2. Technology Hardware & Equipment,enum=J1. Transportation Infrastructure,enum=J2. Heavy Constructions & Civil Engineering,enum=J3. Telecommunication,enum=J4. Utilities,enum=K1. Transportation,enum=K2. Logistics & Deliveries,enum=General Market & Policy,description=Official IDX-IC Subsector classification"`
+	IsIndustryWide     bool     `json:"is_industry_wide" jsonschema:"description=True if the news affects an entire sector or macroeconomic policy rather than just one individual company"`
 }
 
 func (s *Service) Summarize(ctx context.Context, ids []bson.ObjectID) error {
@@ -87,7 +88,8 @@ Provide your evaluation adhering to the following rules:
 - ImpactDirection: Exactly "Bullish", "Bearish", or "Neutral".
 - InvestmentTakeaway: 1 to 2 sentences summarizing the bottom-line takeaway for a long-term value investor.
 - Tickers: Array of uppercase 4-letter Indonesian stock tickers explicitly mentioned or impacted (e.g. ["BBRI", "BBCA"]). Empty array [] if no specific company is mentioned.
-- Industry: Sector category (e.g., "Banking", "Poultry", "Mining", "Energy", "Consumer Goods", "Technology", "Infrastructure", "Macroeconomics").
+- Sector: Official IDX-IC Sector (e.g. "G. Financials", "A. Energy", "Macroeconomics").
+- Subsector: Official IDX-IC Subsector (e.g. "G1. Banks", "A1. Oil, Gas, and Coal", "General Market & Policy").
 - IsIndustryWide: Boolean true if the news affects the whole sector or macro economy rather than an isolated company.
 
 Article:
@@ -133,7 +135,8 @@ Article:
 				zap.Int("value_score", summary.ValueScore),
 				zap.String("impact_direction", summary.ImpactDirection),
 				zap.Strings("tickers", summary.Tickers),
-				zap.String("industry", summary.Industry),
+				zap.String("sector", summary.Sector),
+				zap.String("subsector", summary.Subsector),
 			)
 
 			// Update the news document
@@ -146,7 +149,9 @@ Article:
 					"impact_direction":    summary.ImpactDirection,
 					"investment_takeaway": summary.InvestmentTakeaway,
 					"tickers":             summary.Tickers,
-					"industry":            summary.Industry,
+					"sector":              summary.Sector,
+					"subsector":           summary.Subsector,
+					"industry":            summary.Subsector, // backwards compatibility
 					"is_industry_wide":    summary.IsIndustryWide,
 					"updated_at":          time.Now(),
 				},
@@ -204,8 +209,12 @@ func (s *Service) GenerateDailyBriefing(ctx context.Context, targetDate time.Tim
 	// Format news summaries for LLM prompt
 	var sb strings.Builder
 	for i, n := range newsList {
+		sec := n.Sector
+		if sec == "" {
+			sec = n.Industry
+		}
 		sb.WriteString(fmt.Sprintf("%d. [%s] (Tickers: %v, Score: %+d, Direction: %s, Sector: %s)\nTitle: %s\nSummary: %s\nTakeaway: %s\n\n",
-			i+1, n.Date.Format("2006-01-02"), n.Tickers, n.ValueScore, n.ImpactDirection, n.Industry, n.Title, n.Summary, n.InvestmentTakeaway))
+			i+1, n.Date.Format("2006-01-02"), n.Tickers, n.ValueScore, n.ImpactDirection, sec, n.Title, n.Summary, n.InvestmentTakeaway))
 	}
 
 	client := openrouter.NewClient(s.cfg.OpenrouterApiKey)

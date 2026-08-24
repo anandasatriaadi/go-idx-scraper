@@ -44,6 +44,8 @@ export interface News {
   impact_direction?: 'Bullish' | 'Bearish' | 'Neutral';
   investment_takeaway?: string;
   tickers?: string[];
+  sector?: string;
+  subsector?: string;
   industry?: string;
   is_industry_wide?: boolean;
 }

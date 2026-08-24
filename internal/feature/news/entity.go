@@ -22,7 +22,9 @@ type News struct {
 	ImpactDirection    string        `bson:"impact_direction" json:"impact_direction"`
 	InvestmentTakeaway string        `bson:"investment_takeaway" json:"investment_takeaway"`
 	Tickers            []string      `bson:"tickers" json:"tickers"`
-	Industry           string        `bson:"industry" json:"industry"`
+	Sector             string        `bson:"sector" json:"sector"`
+	Subsector          string        `bson:"subsector" json:"subsector"`
+	Industry           string        `bson:"industry,omitempty" json:"industry,omitempty"`
 	IsIndustryWide     bool          `bson:"is_industry_wide" json:"is_industry_wide"`
 }
 

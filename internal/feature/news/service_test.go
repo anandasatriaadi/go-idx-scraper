@@ -124,6 +124,41 @@ func TestNewsSummary_SchemaAndPrompt(t *testing.T) {
 	}
 }
 
+func TestNewsSummary_IDXICClassification(t *testing.T) {
+	schema, err := jsonschema.GenerateSchemaForType(NewsSummary{})
+	if err != nil {
+		t.Fatalf("Failed to generate schema: %v", err)
+	}
+	if schema == nil {
+		t.Fatal("Expected non-nil schema")
+	}
+
+	jsonSample := `{
+		"title": "Bank Mandiri Catat Pertumbuhan Kredit 13%",
+		"summary": "Kredit BMRI tumbuh kuat ditopang segmen korporasi dan komersial. Kualitas aset terjaga dengan NPL rendah. Laba bersih semester I meningkat signifikan.",
+		"priority": 3,
+		"value_score": 7,
+		"impact_direction": "Bullish",
+		"investment_takeaway": "Kinerja fundamental solid dengan profitabilitas tinggi dan solvabilitas kokoh.",
+		"tickers": ["BMRI"],
+		"sector": "G. Financials",
+		"subsector": "G1. Banks",
+		"is_industry_wide": false
+	}`
+
+	var summary NewsSummary
+	if err := json.Unmarshal([]byte(jsonSample), &summary); err != nil {
+		t.Fatalf("Failed to unmarshal NewsSummary: %v", err)
+	}
+
+	if summary.Sector != "G. Financials" {
+		t.Errorf("Expected sector 'G. Financials', got '%s'", summary.Sector)
+	}
+	if summary.Subsector != "G1. Banks" {
+		t.Errorf("Expected subsector 'G1. Banks', got '%s'", summary.Subsector)
+	}
+}
+
 func TestBriefingEntity_Fields(t *testing.T) {
 	id := bson.NewObjectID()
 	now := time.Now()
@@ -190,7 +225,8 @@ func TestNewsSummary_TickersAndIndustry(t *testing.T) {
 		"impact_direction": "Bullish",
 		"investment_takeaway": "CPIN dan JPFA memiliki posisi pasar dominan dan efisiensi rantai pasok terintegrasi.",
 		"tickers": ["CPIN", "JPFA", "MAIN"],
-		"industry": "Poultry",
+		"sector": "D. Consumer Non-Cyclicals",
+		"subsector": "D2. Food and Beverage",
 		"is_industry_wide": true
 	}`
 
@@ -202,8 +238,11 @@ func TestNewsSummary_TickersAndIndustry(t *testing.T) {
 	if len(summary.Tickers) != 3 || summary.Tickers[0] != "CPIN" {
 		t.Errorf("Expected tickers with CPIN, got %v", summary.Tickers)
 	}
-	if summary.Industry != "Poultry" {
-		t.Errorf("Expected industry 'Poultry', got '%s'", summary.Industry)
+	if summary.Sector != "D. Consumer Non-Cyclicals" {
+		t.Errorf("Expected sector 'D. Consumer Non-Cyclicals', got '%s'", summary.Sector)
+	}
+	if summary.Subsector != "D2. Food and Beverage" {
+		t.Errorf("Expected subsector 'D2. Food and Beverage', got '%s'", summary.Subsector)
 	}
 	if !summary.IsIndustryWide {
 		t.Errorf("Expected is_industry_wide to be true")
