@@ -80,25 +80,67 @@ type ComputedRatios struct {
 }
 
 type ValuationMetrics struct {
-	NormalizedEPS        float64 `bson:"normalized_eps" json:"normalized_eps"`
-	NormalizedBVPS       float64 `bson:"normalized_bvps" json:"normalized_bvps"`
-	RevenuePerShare      float64 `bson:"revenue_per_share" json:"revenue_per_share"`
-	CashPerShare         float64 `bson:"cash_per_share" json:"cash_per_share"`
-	FreeCashFlowPerShare float64 `bson:"free_cash_flow_per_share" json:"free_cash_flow_per_share"`
-	MarketCap            float64 `bson:"market_cap" json:"market_cap"`
-	EnterpriseValue      float64 `bson:"enterprise_value" json:"enterprise_value"`
-	GrahamNumber         float64 `bson:"graham_number" json:"graham_number"`
-	DCFFairValue         float64 `bson:"dcf_fair_value" json:"dcf_fair_value"`
-	CurrentPrice         float64 `bson:"current_price" json:"current_price"`
-	MarginOfSafetyPct    float64 `bson:"margin_of_safety_pct" json:"margin_of_safety_pct"`
-	PERatio              float64 `bson:"pe_ratio" json:"pe_ratio"`
-	PBRatio              float64 `bson:"pb_ratio" json:"pb_ratio"`
-	PSRatio              float64 `bson:"ps_ratio" json:"ps_ratio"`
-	PFCFRatio            float64 `bson:"p_fcf_ratio" json:"p_fcf_ratio"`
-	EVToEBIT             float64 `bson:"ev_to_ebit" json:"ev_to_ebit"`
-	EVToEBITDA           float64 `bson:"ev_to_ebitda" json:"ev_to_ebitda"`
-	EarningsYieldPct     float64 `bson:"earnings_yield_pct" json:"earnings_yield_pct"`
-	QuickRatio           float64 `bson:"quick_ratio" json:"quick_ratio"`
+	NormalizedEPS        float64         `bson:"normalized_eps" json:"normalized_eps"`
+	NormalizedBVPS       float64         `bson:"normalized_bvps" json:"normalized_bvps"`
+	RevenuePerShare      float64         `bson:"revenue_per_share" json:"revenue_per_share"`
+	CashPerShare         float64         `bson:"cash_per_share" json:"cash_per_share"`
+	FreeCashFlowPerShare float64         `bson:"free_cash_flow_per_share" json:"free_cash_flow_per_share"`
+	MarketCap            float64         `bson:"market_cap" json:"market_cap"`
+	EnterpriseValue      float64         `bson:"enterprise_value" json:"enterprise_value"`
+	GrahamNumber         float64         `bson:"graham_number" json:"graham_number"`
+	DCFFairValue         float64         `bson:"dcf_fair_value" json:"dcf_fair_value"`
+	CurrentPrice         float64         `bson:"current_price" json:"current_price"`
+	MarginOfSafetyPct    float64         `bson:"margin_of_safety_pct" json:"margin_of_safety_pct"`
+	PERatio              float64         `bson:"pe_ratio" json:"pe_ratio"`
+	PBRatio              float64         `bson:"pb_ratio" json:"pb_ratio"`
+	PSRatio              float64         `bson:"ps_ratio" json:"ps_ratio"`
+	PFCFRatio            float64         `bson:"p_fcf_ratio" json:"p_fcf_ratio"`
+	EVToEBIT             float64         `bson:"ev_to_ebit" json:"ev_to_ebit"`
+	EVToEBITDA           float64         `bson:"ev_to_ebitda" json:"ev_to_ebitda"`
+	EarningsYieldPct     float64         `bson:"earnings_yield_pct" json:"earnings_yield_pct"`
+	QuickRatio           float64         `bson:"quick_ratio" json:"quick_ratio"`
+	ValuationBands       *ValuationBands `bson:"valuation_bands,omitempty" json:"valuation_bands,omitempty"`
+	TimingSignal         *TimingSignal   `bson:"timing_signal,omitempty" json:"timing_signal,omitempty"`
+}
+
+type ValuationBands struct {
+	MeanPE           float64 `bson:"mean_pe" json:"mean_pe"`
+	StdDevPE         float64 `bson:"std_dev_pe" json:"std_dev_pe"`
+	Plus2SD_PE       float64 `bson:"plus_2sd_pe" json:"plus_2sd_pe"`
+	Plus1SD_PE       float64 `bson:"plus_1sd_pe" json:"plus_1sd_pe"`
+	Minus1SD_PE      float64 `bson:"minus_1sd_pe" json:"minus_1sd_pe"`
+	Minus2SD_PE      float64 `bson:"minus_2sd_pe" json:"minus_2sd_pe"`
+	Plus2SDPrice_PE  float64 `bson:"plus_2sd_price_pe" json:"plus_2sd_price_pe"`
+	Plus1SDPrice_PE  float64 `bson:"plus_1sd_price_pe" json:"plus_1sd_price_pe"`
+	MeanPrice_PE     float64 `bson:"mean_price_pe" json:"mean_price_pe"`
+	Minus1SDPrice_PE float64 `bson:"minus_1sd_price_pe" json:"minus_1sd_price_pe"`
+	Minus2SDPrice_PE float64 `bson:"minus_2sd_price_pe" json:"minus_2sd_price_pe"`
+
+	MeanPB           float64 `bson:"mean_pb" json:"mean_pb"`
+	StdDevPB         float64 `bson:"std_dev_pb" json:"std_dev_pb"`
+	Plus2SD_PB       float64 `bson:"plus_2sd_pb" json:"plus_2sd_pb"`
+	Plus1SD_PB       float64 `bson:"plus_1sd_pb" json:"plus_1sd_pb"`
+	Minus1SD_PB      float64 `bson:"minus_1sd_pb" json:"minus_1sd_pb"`
+	Minus2SD_PB      float64 `bson:"minus_2sd_pb" json:"minus_2sd_pb"`
+	Plus2SDPrice_PB  float64 `bson:"plus_2sd_price_pb" json:"plus_2sd_price_pb"`
+	Plus1SDPrice_PB  float64 `bson:"plus_1sd_price_pb" json:"plus_1sd_price_pb"`
+	MeanPrice_PB     float64 `bson:"mean_price_pb" json:"mean_price_pb"`
+	Minus1SDPrice_PB float64 `bson:"minus_1sd_price_pb" json:"minus_1sd_price_pb"`
+	Minus2SDPrice_PB float64 `bson:"minus_2sd_price_pb" json:"minus_2sd_price_pb"`
+}
+
+type TimingSignal struct {
+	Score                 int      `bson:"score" json:"score"`
+	Status                string   `bson:"status" json:"status"`
+	RSI                   float64  `bson:"rsi" json:"rsi"`
+	RSIBullishDivergence  bool     `bson:"rsi_bullish_divergence" json:"rsi_bullish_divergence"`
+	RVOL                  float64  `bson:"rvol" json:"rvol"`
+	CLV                   float64  `bson:"clv" json:"clv"`
+	StoppingVolume        bool     `bson:"stopping_volume" json:"stopping_volume"`
+	VolumeDryUp           bool     `bson:"volume_dry_up" json:"volume_dry_up"`
+	VDU                   float64  `bson:"vdu" json:"vdu"`
+	ValuationDiscountZone string   `bson:"valuation_discount_zone,omitempty" json:"valuation_discount_zone,omitempty"`
+	Signals               []string `bson:"signals,omitempty" json:"signals,omitempty"`
 }
 
 type Statement struct {
@@ -115,6 +157,8 @@ type Statement struct {
 	Facts          FactMap           `bson:"facts" json:"facts"`
 	ComputedRatios ComputedRatios    `bson:"computed_ratios" json:"computed_ratios"`
 	Valuation      ValuationMetrics  `bson:"valuation" json:"valuation"`
+	ValuationBands *ValuationBands   `bson:"valuation_bands,omitempty" json:"valuation_bands,omitempty"`
+	TimingSignal   *TimingSignal     `bson:"timing_signal,omitempty" json:"timing_signal,omitempty"`
 	CreatedAt      time.Time         `bson:"created_at" json:"created_at"`
 	UpdatedAt      time.Time         `bson:"updated_at" json:"updated_at"`
 }
