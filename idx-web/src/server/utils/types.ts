@@ -198,3 +198,26 @@ export interface XBRLStatement {
   created_at?: string;
   updated_at?: string;
 }
+
+export interface PriceCandle {
+  _id?: string;
+  id?: string;
+  ticker: string;
+  date: string | Date;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  adj_close: number;
+  volume: number;
+  created_at?: string | Date;
+  updated_at?: string | Date;
+}
+
+export interface StockPriceResponse {
+  ticker: string;
+  range: string;
+  count: number;
+  prices: PriceCandle[];
+}
+
