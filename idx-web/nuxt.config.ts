@@ -6,6 +6,8 @@ export default defineNuxtConfig({
   
   srcDir: 'src/',
 
+  css: ['~/assets/main.css'],
+
   experimental: {
     appManifest: false,
   },
