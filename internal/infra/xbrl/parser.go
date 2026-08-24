@@ -357,8 +357,13 @@ func assignCoreMetric(stmt *domain.Statement, tag string, val float64) {
 	case "WeightedAverageShares", "NumberOfIssuedAndFullyPaidShares":
 		c.SharesOutstanding = val
 	case "BasicEarningsLossPerShareFromContinuingOperations", "BasicEarningsLossPerShare", "DilutedEarningsLossPerShareFromContinuingOperations", "DilutedEarningsLossPerShare":
-		if stmt.Valuation.NormalizedEPS == 0 && val > 0 {
-			stmt.Valuation.NormalizedEPS = val
+		if val > 0 {
+			if val < 1.0 && stmt.Metadata.RoundingMultiplier >= 1000 {
+				val = val * stmt.Metadata.RoundingMultiplier
+			}
+			if stmt.Valuation.NormalizedEPS == 0 {
+				stmt.Valuation.NormalizedEPS = val
+			}
 		}
 	}
 }

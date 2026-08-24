@@ -108,7 +108,7 @@ func ComputeValuationAndRatios(stmt *Statement, priorStmt *Statement, currentSto
 	}
 	r.PiotroskiFScore = fScore
 
-	// 6. Currency Normalization (USD -> IDR)
+	// 6. Currency Normalization (USD -> IDR) & Satuan / Rounding Scaling
 	fxRate := 1.0
 	if stmt.Metadata.Currency == "USD" {
 		if stmt.Metadata.ConversionRate > 0 {
@@ -118,7 +118,23 @@ func ComputeValuationAndRatios(stmt *Statement, priorStmt *Statement, currentSto
 		}
 	}
 
+	multiplier := stmt.Metadata.RoundingMultiplier
+	if multiplier < 1.0 {
+		multiplier = 1.0
+	}
+
+	// If per-share EPS in the XML is scaled by the rounding multiplier (e.g. 0.000340 instead of 340 IDR)
+	if v.NormalizedEPS > 0 && v.NormalizedEPS < 1.0 && multiplier >= 1000 {
+		v.NormalizedEPS = v.NormalizedEPS * multiplier
+	}
+
 	shares := c.SharesOutstanding
+	// If shares was reported in "Ribuan / Jutaan" units (e.g. 12,592 instead of 12,592,000,000)
+	if shares > 0 && shares < 1000000 && multiplier >= 1000 {
+		shares = shares * multiplier
+		c.SharesOutstanding = shares
+	}
+
 	if shares <= 1 && v.NormalizedEPS > 0 && c.NetIncome > 0 {
 		shares = (c.NetIncome * fxRate) / v.NormalizedEPS
 		c.SharesOutstanding = shares
