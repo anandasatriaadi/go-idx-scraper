@@ -68,6 +68,21 @@ func (s *Service) ConstructReportURL(year int, periodString, issuerCode string) 
 	return url
 }
 
+func (s *Service) ConstructXBRLReportURL(year int, periodString, issuerCode string, fileType string) string {
+	var modePeriod string
+	if periodString == "Tahunan" {
+		modePeriod = "Audit"
+	} else {
+		modePeriod = "TW" + romanToNumeral(periodString)
+	}
+	if fileType == "" {
+		fileType = "instance.zip"
+	}
+	url := fmt.Sprintf("https://www.idx.co.id/Portals/0/StaticData/ListedCompanies/Corporate_Actions/New_Info_JSX/Jenis_Informasi/01_Laporan_Keuangan/02_Soft_Copy_Laporan_Keuangan//Laporan%%20Keuangan%%20Tahun%%20%d/%s/%s/%s",
+		year, modePeriod, issuerCode, fileType)
+	return url
+}
+
 func romanToNumeral(roman string) string {
 	switch roman {
 	case "I":
