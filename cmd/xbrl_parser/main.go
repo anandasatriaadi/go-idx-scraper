@@ -87,7 +87,7 @@ func main() {
 			continue
 		}
 		fileNameLower := strings.ToLower(f.Name())
-		if strings.HasSuffix(fileNameLower, ".zip") || strings.HasSuffix(fileNameLower, ".xbrl") || strings.HasSuffix(fileNameLower, ".xml") {
+		if strings.HasSuffix(fileNameLower, ".zip") || strings.HasSuffix(fileNameLower, ".xbrl") || strings.HasSuffix(fileNameLower, ".xml") || strings.HasSuffix(fileNameLower, ".xlsx") {
 			// Pre-filter: if filename explicitly contains a ticker not in tickerFilter, skip
 			if len(tickerFilter) > 0 {
 				matched := false
@@ -107,21 +107,9 @@ func main() {
 			fullPath := filepath.Join(targetDir, f.Name())
 			logger.Info("Processing filing", zap.String("file", f.Name()))
 
-			var stmt *domain.Statement
-			if strings.HasSuffix(fileNameLower, ".zip") {
-				stmt, err = infra.ParseInstanceZip(fullPath)
-			} else {
-				fileHandle, oErr := os.Open(fullPath)
-				if oErr == nil {
-					stmt, err = infra.ParseInstanceXML(fileHandle)
-					fileHandle.Close()
-				} else {
-					err = oErr
-				}
-			}
-
+			stmt, err := infra.ParseAnyFiling(fullPath)
 			if err != nil {
-				logger.Warn("Failed to parse XBRL filing", zap.String("file", f.Name()), zap.Error(err))
+				logger.Warn("Failed to parse filing", zap.String("file", f.Name()), zap.Error(err))
 				continue
 			}
 

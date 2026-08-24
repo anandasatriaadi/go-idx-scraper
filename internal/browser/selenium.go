@@ -38,37 +38,41 @@ func SetupSelenium(cfg *config.Config) (*SeleniumBrowser, error) {
 	}
 
 	caps := selenium.Capabilities{"browserName": "chrome"}
-	chromeCaps := chrome.Capabilities{
-		Path: "",
-		Args: []string{
-			"--headless",
-			"--no-sandbox",
-			"--disable-dev-shm-usage",
-			"--disable-gpu",
-			"--disable-extensions",
-			"--remote-debugging-port=9222",
-			"--log-level=1",
-			"--safebrowsing-disable-download-protection",
-			"--safebrowsing-disable-extension-blacklist",
-			"--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
-		},
-		Prefs: map[string]interface{}{
-			"download.default_directory":       cfg.Paths.DownloadDir,
-			"download.prompt_for_download":     false,
-			"download.directory_upgrade":       true,
-			"download.extensions_to_open":      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-			"credentials_enable_service":       false,
-			"profile.password_manager_enabled": false,
-		},
-		ExcludeSwitches: []string{"enable-automation"},
+	args := []string{
+		"--no-sandbox",
+		"--disable-dev-shm-usage",
+		"--disable-gpu",
+		"--disable-extensions",
+		"--remote-debugging-port=9222",
+		"--log-level=1",
+		"--safebrowsing-disable-download-protection",
+		"--safebrowsing-disable-extension-blacklist",
+		"--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
 	}
 
 	if cfg.Browser.Headless {
-		chromeCaps.Args = append(chromeCaps.Args, "--headless")
+		args = append(args, "--headless")
 	}
 
 	if cfg.Paths.BrowserProfile != "" {
-		chromeCaps.Args = append(chromeCaps.Args, "--user-data-dir="+cfg.Paths.BrowserProfile)
+		args = append(args, "--user-data-dir="+cfg.Paths.BrowserProfile)
+	}
+
+	chromeCaps := chrome.Capabilities{
+		Path: "",
+		Args: args,
+		Prefs: map[string]interface{}{
+			"download.default_directory":                                       cfg.Paths.DownloadDir,
+			"download.prompt_for_download":                                     false,
+			"download.directory_upgrade":                                       true,
+			"safebrowsing.enabled":                                             true,
+			"safebrowsing.disable_download_protection":                         true,
+			"profile.default_content_settings.popups":                         0,
+			"profile.content_settings.exceptions.automatic_downloads.*.setting": 1,
+			"credentials_enable_service":                                       false,
+			"profile.password_manager_enabled":                                 false,
+		},
+		ExcludeSwitches: []string{"enable-automation"},
 	}
 
 	caps.AddChrome(chromeCaps)

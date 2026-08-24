@@ -87,3 +87,25 @@ func TestParseInstanceXML_AADI(t *testing.T) {
 		t.Errorf("Expected at least 50 extracted raw facts, got %d", len(stmt.Facts))
 	}
 }
+
+func TestParseAnyFiling_ExcelSample(t *testing.T) {
+	samplePath := "saham/FinancialStatement-2025-III-AALI.xlsx"
+	if _, err := os.Stat("../../../" + samplePath); err != nil {
+		t.Skipf("Skipping excel test: %v", err)
+	}
+
+	stmt, err := ParseAnyFiling("../../../" + samplePath)
+	if err != nil {
+		t.Fatalf("ParseAnyFiling failed: %v", err)
+	}
+
+	if stmt.Ticker != "AALI" {
+		t.Errorf("Expected Ticker AALI, got %s", stmt.Ticker)
+	}
+	if stmt.Year != 2025 {
+		t.Errorf("Expected Year 2025, got %d", stmt.Year)
+	}
+	if stmt.Core.TotalAssets <= 0 {
+		t.Errorf("Expected positive TotalAssets, got %f", stmt.Core.TotalAssets)
+	}
+}

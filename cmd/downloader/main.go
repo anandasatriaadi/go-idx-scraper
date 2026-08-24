@@ -30,7 +30,7 @@ const (
 	retryDelay          = 5 * time.Second
 )
 
-var errorTitles = []string{"404", "document", "503", "attention required", "just a moment"}
+var errorTitles = []string{"404 -", "404 not found", "page not found", "tidak ditemukan", "503", "attention required", "just a moment"}
 
 func main() {
 	if err := run(); err != nil {
@@ -404,18 +404,15 @@ func downloadFile(url string, driver selenium.WebDriver, logger *zap.Logger) err
 		return fmt.Errorf("failed to navigate: %w", err)
 	}
 
+	// Give browser time to process headers and trigger download
+	time.Sleep(1 * time.Second)
+
 	title, _ := driver.Title()
 	logger.Info("Browser title retrieved", zap.String("title", title))
 
 	if err := checkPageTitleForErrors(title, url, logger); err != nil {
-		if err := driver.Get("data:,"); err != nil {
-			logger.Warn("Failed to navigate to blank page", zap.Error(err))
-		}
+		_ = driver.Get("data:,")
 		return err
-	}
-
-	if err := driver.Get("data:,"); err != nil {
-		logger.Warn("Failed to navigate to blank page", zap.Error(err))
 	}
 
 	return nil

@@ -31,7 +31,7 @@ import (
 	"go.uber.org/zap"
 )
 
-var errorTitles = []string{"404", "document", "503", "attention required", "just a moment"}
+var errorTitles = []string{"404 -", "404 not found", "page not found", "tidak ditemukan", "503", "attention required", "just a moment"}
 
 func main() {
 	if err := run(); err != nil {
@@ -444,7 +444,7 @@ func parseAndIngestTickerFiles(ctx context.Context, ticker string, cfg *config.C
 			nameLower := strings.ToLower(entry.Name())
 			nameUpper := strings.ToUpper(entry.Name())
 
-			if !strings.HasSuffix(nameLower, ".zip") && !strings.HasSuffix(nameLower, ".xml") && !strings.HasSuffix(nameLower, ".xbrl") {
+			if !strings.HasSuffix(nameLower, ".zip") && !strings.HasSuffix(nameLower, ".xml") && !strings.HasSuffix(nameLower, ".xbrl") && !strings.HasSuffix(nameLower, ".xlsx") {
 				continue
 			}
 
@@ -453,21 +453,7 @@ func parseAndIngestTickerFiles(ctx context.Context, ticker string, cfg *config.C
 				continue
 			}
 
-			var stmt *xbrl.Statement
-			var pErr error
-
-			if strings.HasSuffix(nameLower, ".zip") {
-				stmt, pErr = infra.ParseInstanceZip(fullPath)
-			} else {
-				f, oErr := os.Open(fullPath)
-				if oErr == nil {
-					stmt, pErr = infra.ParseInstanceXML(f)
-					f.Close()
-				} else {
-					pErr = oErr
-				}
-			}
-
+			stmt, pErr := infra.ParseAnyFiling(fullPath)
 			if pErr != nil {
 				continue
 			}
@@ -690,18 +676,14 @@ func downloadFile(url string, driver selenium.WebDriver, logger *zap.Logger) err
 		return fmt.Errorf("failed to navigate: %w", err)
 	}
 
+	time.Sleep(1 * time.Second)
+
 	title, _ := driver.Title()
 	logger.Info("Browser title retrieved", zap.String("title", title))
 
 	if err := checkPageTitleForErrors(title, url, logger); err != nil {
-		if err := driver.Get("data:,"); err != nil {
-			logger.Warn("Failed to navigate to blank page", zap.Error(err))
-		}
+		_ = driver.Get("data:,")
 		return err
-	}
-
-	if err := driver.Get("data:,"); err != nil {
-		logger.Warn("Failed to navigate to blank page", zap.Error(err))
 	}
 
 	return nil
