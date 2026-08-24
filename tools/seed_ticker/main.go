@@ -179,19 +179,17 @@ func run() error {
 				instanceZipName := fmt.Sprintf("FinancialStatement-%d-%s-%s-instance.zip", year, modePeriod, cleanTicker)
 				inlineZipName := fmt.Sprintf("FinancialStatement-%d-%s-%s-inlineXBRL.zip", year, modePeriod, cleanTicker)
 
-				// Check if any format is already present
-				alreadyExists := false
-				for _, fn := range []string{instanceZipName, inlineZipName, xlsxName} {
-					tp := filepath.Join(cfg.Paths.DownloadDir, fn)
-					cp := filepath.Join(cfg.Paths.CheckDir, fn)
-					if (fileExistsAndNotEmpty(tp) || fileExistsAndNotEmpty(cp)) && !cleanDBFlag {
-						logger.Info("Filing already present, skipping download", zap.String("file", fn))
-						alreadyExists = true
-						break
+				// Check if any filing is already present for this year & period
+				if !cleanDBFlag {
+					if exists, existingFile := findExistingFiling([]string{cfg.Paths.DownloadDir, cfg.Paths.CheckDir, "saham"}, year, period, cleanTicker); exists {
+						logger.Info("Filing already present, skipping download",
+							zap.String("ticker", cleanTicker),
+							zap.Int("year", year),
+							zap.String("period", ps),
+							zap.String("file", filepath.Base(existingFile)),
+						)
+						continue
 					}
-				}
-				if alreadyExists {
-					continue
 				}
 
 				candidates := []struct {
@@ -807,4 +805,43 @@ func copyAndRemove(src, dst string) error {
 func fileExistsAndNotEmpty(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir() && info.Size() > 0
+}
+
+func findExistingFiling(dirs []string, year int, period, ticker string) (bool, string) {
+	cleanTicker := strings.ToUpper(strings.TrimSpace(ticker))
+	ps, modePeriod := finreport.NormalizePeriod(period)
+
+	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			nameUpper := strings.ToUpper(entry.Name())
+			if !strings.Contains(nameUpper, cleanTicker) {
+				continue
+			}
+			if !strings.Contains(nameUpper, fmt.Sprintf("-%d-", year)) && !strings.Contains(nameUpper, fmt.Sprintf("%d", year)) {
+				continue
+			}
+			matchPeriod := strings.Contains(nameUpper, fmt.Sprintf("-%s-", ps)) ||
+				strings.Contains(nameUpper, fmt.Sprintf("-%s-", modePeriod)) ||
+				strings.Contains(nameUpper, fmt.Sprintf("-%s.", ps)) ||
+				strings.Contains(nameUpper, fmt.Sprintf("-%s.", modePeriod)) ||
+				strings.Contains(nameUpper, fmt.Sprintf("-%s-", strings.ToUpper(period)))
+			if matchPeriod {
+				fullPath := filepath.Join(dir, entry.Name())
+				if info, err := os.Stat(fullPath); err == nil && info.Size() > 0 {
+					return true, fullPath
+				}
+			}
+		}
+	}
+	return false, ""
 }

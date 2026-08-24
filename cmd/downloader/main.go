@@ -204,29 +204,14 @@ func run() error {
 				inlineZipName := fmt.Sprintf("FinancialStatement-%d-%s-%s-inlineXBRL.zip", year, modePeriod, stockName)
 
 				// Check if already downloaded
-				alreadyExists := false
-				var existingPath string
-				for _, fn := range []string{instanceZipName, inlineZipName, xlsxName} {
-					tp := filepath.Join(cfg.Paths.DownloadDir, fn)
-					cp := filepath.Join(cfg.Paths.CheckDir, fn)
-					if fileExistsAndNotEmpty(tp) {
-						alreadyExists = true
-						existingPath = tp
-						break
+				if !cleanFlag {
+					if exists, existingPath := findExistingFiling([]string{cfg.Paths.DownloadDir, cfg.Paths.CheckDir, "saham"}, year, period, stockName); exists {
+						logger.Info("Filing already downloaded, skipping download", zap.String("file", filepath.Base(existingPath)))
+						if parseFlag {
+							parseAndUpsertXBRL(ctx, existingPath, xbrlRepo, logger)
+						}
+						continue
 					}
-					if fileExistsAndNotEmpty(cp) {
-						alreadyExists = true
-						existingPath = cp
-						break
-					}
-				}
-
-				if alreadyExists && !cleanFlag {
-					logger.Info("Filing already downloaded, skipping download", zap.String("file", filepath.Base(existingPath)))
-					if parseFlag {
-						parseAndUpsertXBRL(ctx, existingPath, xbrlRepo, logger)
-					}
-					continue
 				}
 
 				candidates := []struct {
