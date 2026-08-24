@@ -39,6 +39,7 @@ type CoreFinancials struct {
 	CurrentAssets      float64 `bson:"current_assets" json:"current_assets"`
 	TotalLiabilities   float64 `bson:"total_liabilities" json:"total_liabilities"`
 	CurrentLiabilities float64 `bson:"current_liabilities" json:"current_liabilities"`
+	WorkingCapital     float64 `bson:"working_capital" json:"working_capital"`
 	ShortTermDebt      float64 `bson:"short_term_debt" json:"short_term_debt"`
 	LongTermDebt       float64 `bson:"long_term_debt" json:"long_term_debt"`
 	TotalDebt          float64 `bson:"total_debt" json:"total_debt"`
@@ -49,11 +50,14 @@ type CoreFinancials struct {
 	CostOfRevenue      float64 `bson:"cost_of_revenue" json:"cost_of_revenue"`
 	GrossProfit        float64 `bson:"gross_profit" json:"gross_profit"`
 	OperatingIncome    float64 `bson:"operating_income" json:"operating_income"`
+	EBITDA             float64 `bson:"ebitda" json:"ebitda"`
 	FinanceCosts       float64 `bson:"finance_costs" json:"finance_costs"`
 	NetIncome          float64 `bson:"net_income" json:"net_income"`
 	NetIncomeParent    float64 `bson:"net_income_parent" json:"net_income_parent"`
 
 	OperatingCashFlow  float64 `bson:"operating_cash_flow" json:"operating_cash_flow"`
+	InvestingCashFlow  float64 `bson:"investing_cash_flow" json:"investing_cash_flow"`
+	FinancingCashFlow  float64 `bson:"financing_cash_flow" json:"financing_cash_flow"`
 	CapEx              float64 `bson:"capex" json:"capex"`
 	FreeCashFlow       float64 `bson:"free_cash_flow" json:"free_cash_flow"`
 	DividendsPaid      float64 `bson:"dividends_paid" json:"dividends_paid"`
@@ -76,14 +80,25 @@ type ComputedRatios struct {
 }
 
 type ValuationMetrics struct {
-	NormalizedEPS     float64 `bson:"normalized_eps" json:"normalized_eps"`
-	NormalizedBVPS    float64 `bson:"normalized_bvps" json:"normalized_bvps"`
-	GrahamNumber      float64 `bson:"graham_number" json:"graham_number"`
-	DCFFairValue      float64 `bson:"dcf_fair_value" json:"dcf_fair_value"`
-	CurrentPrice      float64 `bson:"current_price" json:"current_price"`
-	MarginOfSafetyPct float64 `bson:"margin_of_safety_pct" json:"margin_of_safety_pct"`
-	PERatio           float64 `bson:"pe_ratio" json:"pe_ratio"`
-	PBRatio           float64 `bson:"pb_ratio" json:"pb_ratio"`
+	NormalizedEPS        float64 `bson:"normalized_eps" json:"normalized_eps"`
+	NormalizedBVPS       float64 `bson:"normalized_bvps" json:"normalized_bvps"`
+	RevenuePerShare      float64 `bson:"revenue_per_share" json:"revenue_per_share"`
+	CashPerShare         float64 `bson:"cash_per_share" json:"cash_per_share"`
+	FreeCashFlowPerShare float64 `bson:"free_cash_flow_per_share" json:"free_cash_flow_per_share"`
+	MarketCap            float64 `bson:"market_cap" json:"market_cap"`
+	EnterpriseValue      float64 `bson:"enterprise_value" json:"enterprise_value"`
+	GrahamNumber         float64 `bson:"graham_number" json:"graham_number"`
+	DCFFairValue         float64 `bson:"dcf_fair_value" json:"dcf_fair_value"`
+	CurrentPrice         float64 `bson:"current_price" json:"current_price"`
+	MarginOfSafetyPct    float64 `bson:"margin_of_safety_pct" json:"margin_of_safety_pct"`
+	PERatio              float64 `bson:"pe_ratio" json:"pe_ratio"`
+	PBRatio              float64 `bson:"pb_ratio" json:"pb_ratio"`
+	PSRatio              float64 `bson:"ps_ratio" json:"ps_ratio"`
+	PFCFRatio            float64 `bson:"p_fcf_ratio" json:"p_fcf_ratio"`
+	EVToEBIT             float64 `bson:"ev_to_ebit" json:"ev_to_ebit"`
+	EVToEBITDA           float64 `bson:"ev_to_ebitda" json:"ev_to_ebitda"`
+	EarningsYieldPct     float64 `bson:"earnings_yield_pct" json:"earnings_yield_pct"`
+	QuickRatio           float64 `bson:"quick_ratio" json:"quick_ratio"`
 }
 
 type Statement struct {

@@ -327,24 +327,32 @@ func assignCoreMetric(c *domain.CoreFinancials, tag string, val float64) {
 		c.TotalEquity = val
 	case "RetainedEarningsUnappropriated":
 		c.RetainedEarnings = val
-	case "SalesAndRevenue", "Revenues":
+	case "SalesAndRevenue", "Revenues", "InterestIncome", "InterestAndFinanceIncome":
 		c.Revenue = val
-	case "CostOfSalesAndRevenue":
+	case "CostOfSalesAndRevenue", "InterestExpense":
 		c.CostOfRevenue = val
-	case "GrossProfit":
+	case "GrossProfit", "NetInterestIncome":
 		c.GrossProfit = val
-	case "OperatingIncomeExpense":
+	case "OperatingIncomeExpense", "OperatingIncome":
 		c.OperatingIncome = val
-	case "FinanceCosts":
+	case "FinanceCosts", "InterestAndFinanceCosts":
 		c.FinanceCosts = val
 	case "ProfitLoss":
 		c.NetIncome = val
 	case "ProfitLossAttributableToOwnersOfParentEntity":
 		c.NetIncomeParent = val
-	case "NetCashFlowsFromUsedInOperatingActivities":
-		c.OperatingCashFlow = val
-	case "PaymentsForPropertyPlantEquipment":
+	case "NetCashFlowsReceivedFromUsedInOperatingActivities", "NetCashFlowsFromUsedInOperatingActivities", "CashGeneratedFromUsedInOperations":
+		if c.OperatingCashFlow == 0 {
+			c.OperatingCashFlow = val
+		}
+	case "NetCashFlowsReceivedFromUsedInInvestingActivities", "NetCashFlowsFromUsedInInvestingActivities":
+		c.InvestingCashFlow = val
+	case "NetCashFlowsReceivedFromUsedInFinancingActivities", "NetCashFlowsFromUsedInFinancingActivities":
+		c.FinancingCashFlow = val
+	case "PaymentsForPropertyPlantEquipment", "PaymentsForAcquisitionOfPropertyPlantAndEquipment", "AdditionInPropertyPlantAndEquipment":
 		c.CapEx = val
+	case "DistributionsOfCashDividends", "DividendsPaidFromFinancingActivities":
+		c.DividendsPaid = val
 	case "WeightedAverageShares", "NumberOfIssuedAndFullyPaidShares":
 		c.SharesOutstanding = val
 	}
@@ -355,8 +363,14 @@ func finalizeCoreFinancials(s *domain.Statement) {
 	if c.TotalDebt == 0 {
 		c.TotalDebt = c.ShortTermDebt + c.LongTermDebt
 	}
+	if c.WorkingCapital == 0 && c.CurrentAssets != 0 {
+		c.WorkingCapital = c.CurrentAssets - c.CurrentLiabilities
+	}
 	if c.FreeCashFlow == 0 && c.OperatingCashFlow != 0 {
 		c.FreeCashFlow = c.OperatingCashFlow - c.CapEx
+	}
+	if c.EBITDA == 0 && c.OperatingIncome != 0 {
+		c.EBITDA = c.OperatingIncome + (c.CapEx * 0.7) // Estimate D&A if not explicitly separated
 	}
 }
 

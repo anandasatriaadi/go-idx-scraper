@@ -137,6 +137,7 @@ export interface CoreFinancials {
   current_liabilities: number;
   short_term_debt: number;
   long_term_debt: number;
+  working_capital?: number;
   total_debt: number;
   total_equity: number;
   retained_earnings: number;
@@ -144,10 +145,13 @@ export interface CoreFinancials {
   cost_of_revenue: number;
   gross_profit: number;
   operating_income: number;
+  ebitda?: number;
   finance_costs: number;
   net_income: number;
   net_income_parent: number;
   operating_cash_flow: number;
+  investing_cash_flow?: number;
+  financing_cash_flow?: number;
   capex: number;
   free_cash_flow: number;
   dividends_paid: number;
@@ -172,12 +176,23 @@ export interface ComputedRatios {
 export interface ValuationMetrics {
   normalized_eps: number;
   normalized_bvps: number;
+  revenue_per_share?: number;
+  cash_per_share?: number;
+  free_cash_flow_per_share?: number;
+  market_cap?: number;
+  enterprise_value?: number;
   graham_number: number;
   dcf_fair_value: number;
   current_price: number;
   margin_of_safety_pct: number;
   pe_ratio: number;
   pb_ratio: number;
+  ps_ratio?: number;
+  p_fcf_ratio?: number;
+  ev_to_ebit?: number;
+  ev_to_ebitda?: number;
+  earnings_yield_pct?: number;
+  quick_ratio?: number;
 }
 
 export interface XBRLStatement {

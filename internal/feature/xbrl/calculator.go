@@ -132,6 +132,9 @@ func ComputeValuationAndRatios(stmt *Statement, priorStmt *Statement, currentSto
 	}
 	if shares > 1 {
 		v.NormalizedBVPS = (c.TotalEquity * fxRate) / shares
+		v.RevenuePerShare = (c.Revenue * fxRate) / shares
+		v.CashPerShare = (c.CashAndEquivalents * fxRate) / shares
+		v.FreeCashFlowPerShare = (c.FreeCashFlow * fxRate) / shares
 	}
 
 	// 7. Benjamin Graham Fair Value Formula
@@ -142,15 +145,37 @@ func ComputeValuationAndRatios(stmt *Statement, priorStmt *Statement, currentSto
 	// 8. Valuation Multiples & Margin of Safety
 	v.CurrentPrice = currentStockPrice
 	if currentStockPrice > 0 {
+		if shares > 1 {
+			v.MarketCap = currentStockPrice * shares
+			v.EnterpriseValue = v.MarketCap + (c.TotalDebt * fxRate) - (c.CashAndEquivalents * fxRate)
+		}
 		if v.NormalizedEPS > 0 {
 			v.PERatio = currentStockPrice / v.NormalizedEPS
+			v.EarningsYieldPct = (v.NormalizedEPS / currentStockPrice) * 100
 		}
 		if v.NormalizedBVPS > 0 {
 			v.PBRatio = currentStockPrice / v.NormalizedBVPS
 		}
+		if v.RevenuePerShare > 0 {
+			v.PSRatio = currentStockPrice / v.RevenuePerShare
+		}
+		if v.FreeCashFlowPerShare > 0 {
+			v.PFCFRatio = currentStockPrice / v.FreeCashFlowPerShare
+		}
+		if c.OperatingIncome > 0 && v.EnterpriseValue > 0 {
+			v.EVToEBIT = v.EnterpriseValue / (c.OperatingIncome * fxRate)
+		}
+		if c.EBITDA > 0 && v.EnterpriseValue > 0 {
+			v.EVToEBITDA = v.EnterpriseValue / (c.EBITDA * fxRate)
+		}
 		if v.GrahamNumber > 0 {
 			v.MarginOfSafetyPct = ((v.GrahamNumber - currentStockPrice) / v.GrahamNumber) * 100
 		}
+	}
+
+	// 9. Quick Ratio (Cash + Trade Receivables / Current Liabilities)
+	if c.CurrentLiabilities > 0 {
+		v.QuickRatio = c.CashAndEquivalents / c.CurrentLiabilities
 	}
 
 	return nil

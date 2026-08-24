@@ -337,13 +337,31 @@ func parseExcelCashFlow(f *excelize.File, stmt *domain.Statement) {
 		val := findFirstNumericCell(row)
 
 		switch {
-		case strings.Contains(label, "kas neto yang diperoleh dari (digunakan untuk) aktivitas operasi") || strings.Contains(label, "net cash flows from (used in) operating activities"):
-			if stmt.Core.OperatingCashFlow == 0 {
-				stmt.Core.OperatingCashFlow = val * stmt.Metadata.RoundingMultiplier
+		case strings.Contains(label, "aktivitas operasi") || strings.Contains(label, "operating activities"):
+			if strings.Contains(label, "kas neto") || strings.Contains(label, "net cash") || strings.Contains(label, "jumlah") {
+				if stmt.Core.OperatingCashFlow == 0 {
+					stmt.Core.OperatingCashFlow = val * stmt.Metadata.RoundingMultiplier
+				}
 			}
-		case strings.Contains(label, "perolehan aset tetap") || strings.Contains(label, "payments for property, plant and equipment") || strings.Contains(label, "penambahan aset tetap"):
+		case strings.Contains(label, "aktivitas investasi") || strings.Contains(label, "investing activities"):
+			if strings.Contains(label, "kas neto") || strings.Contains(label, "net cash") || strings.Contains(label, "jumlah") {
+				if stmt.Core.InvestingCashFlow == 0 {
+					stmt.Core.InvestingCashFlow = val * stmt.Metadata.RoundingMultiplier
+				}
+			}
+		case strings.Contains(label, "aktivitas pendanaan") || strings.Contains(label, "financing activities"):
+			if strings.Contains(label, "kas neto") || strings.Contains(label, "net cash") || strings.Contains(label, "jumlah") {
+				if stmt.Core.FinancingCashFlow == 0 {
+					stmt.Core.FinancingCashFlow = val * stmt.Metadata.RoundingMultiplier
+				}
+			}
+		case strings.Contains(label, "perolehan aset tetap") || strings.Contains(label, "payments for property, plant and equipment") || strings.Contains(label, "penambahan aset tetap") || strings.Contains(label, "pembelian aset tetap"):
 			if stmt.Core.CapEx == 0 {
 				stmt.Core.CapEx = val * stmt.Metadata.RoundingMultiplier
+			}
+		case strings.Contains(label, "pembayaran dividen") || strings.Contains(label, "dividends paid"):
+			if stmt.Core.DividendsPaid == 0 {
+				stmt.Core.DividendsPaid = val * stmt.Metadata.RoundingMultiplier
 			}
 		}
 	}
