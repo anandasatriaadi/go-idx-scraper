@@ -68,7 +68,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { News } from '../server/utils/types'
 
 const props = defineProps<{
@@ -84,6 +84,12 @@ defineEmits<{
 const tickerFilter = ref(props.initialTicker || '')
 const industryFilter = ref('')
 const directionFilter = ref('')
+
+watch(() => props.initialTicker, (val) => {
+  if (val !== undefined) {
+    tickerFilter.value = val
+  }
+})
 
 const filteredList = computed(() => {
   return props.news.filter(n => {

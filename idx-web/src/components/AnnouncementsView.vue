@@ -40,12 +40,12 @@
                 <a
                   v-for="(att, i) in item.attachments"
                   :key="i"
-                  :href="att.url || '#'"
+                  :href="att.url || att.full_save_path || '#'"
                   target="_blank"
                   rel="noopener"
                   class="att-link font-mono"
                 >
-                  📥 {{ att.file_name || 'PDF' }}
+                  📥 {{ att.file_name || att.original_filename || att.pdf_filename || 'PDF' }}
                 </a>
               </div>
               <span v-else class="text-muted">-</span>
@@ -75,7 +75,8 @@ const filteredList = computed(() => {
     return (
       a.judul_pengumuman?.toLowerCase().includes(q) ||
       a.no_pengumuman?.toLowerCase().includes(q) ||
-      a.title?.toLowerCase().includes(q)
+      a.title?.toLowerCase().includes(q) ||
+      a.kode_emiten?.toLowerCase().includes(q)
     )
   })
 })
