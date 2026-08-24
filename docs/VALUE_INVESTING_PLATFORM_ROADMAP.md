@@ -81,73 +81,112 @@ The investment philosophy underpinning this entire architecture is rooted in the
 
 ## 3. Pillar 1: Financial Statement Parser & Automated Valuation Engine
 
-### 3.1 IDX XBRL Taxonomy & Financial Ingestion Architecture
-Rather than relying on brittle cell positions or plain spreadsheet formatting, the financial statement parsing engine is directly anchored in the **Official IDX XBRL Taxonomy (2020-01-01)** (`01-idx-taxonomy-2020-01-01.zip`).
+### 3.1 IDX XBRL Taxonomy, Instance XBRL & Data Ingestion Architecture
+The platform is engineered directly around the **Official IDX XBRL Taxonomy (2020-01-01)** (`01-idx-taxonomy-2020-01-01.zip`) and verified against production IDX filings (`instance.zip` and `inlineXBRL.zip`).
 
-#### A. Taxonomy Anatomy & Namespace Structure
-The IDX XBRL Taxonomy defines a rigorous semantic standard for all Indonesian listed issuers:
+#### A. The Three Financial Data Formats on IDX
 
 ```
-01-idx-taxonomy-2020-01-01/
-├── dic/
-│   ├── fin/
-│   │   ├── idx-cor-2020-01-01.xsd       # Core Financial Schema (monetary items, concepts)
-│   │   ├── idx-cor-LAB-id-2020-01-01.xml# Indonesian standard labels
-│   │   ├── idx-cor-LAB-en-2020-01-01.xml# English standard labels
-│   │   ├── idx-cor-REF-2020-01-01.xml   # PSAK / IFRS accounting standard references
-│   │   └── idx-rt-2020-01-01.xsd        # Role Types & presentation roles
-│   └── dei/
-│       ├── idx-dei-2020-01-01.xsd       # Document and Entity Information
-│       └── idx-dei-LAB-id-2020-01-01.xml# Ticker, Issuer Name, Period metadata
-├── rep/corporateDisclosure/
-│   ├── general/                         # General Industry / Manufacturing / Services
-│   │   ├── idx-general-BS-CAL-1210000.xml # Balance Sheet Calculation Linkbase
-│   │   ├── idx-general-PL-CAL-1311000.xml # Profit & Loss Calculation Linkbase
-│   │   └── idx-general-CF-CAL-1510000.xml # Cash Flow Calculation Linkbase
-│   ├── financing/                       # Conventional Banking & Financial Institutions
-│   ├── financesharia/                   # Sharia Banking
-│   ├── insurance/                       # Insurance Companies
-│   ├── securities/                      # Brokerage & Securities
-│   ├── infrastructure/                  # Utilities, Telecom Towers, Toll Roads
-│   └── property/                        # Real Estate & Property Developers
+                                  IDX Financial Reporting
+                                             │
+      ┌──────────────────────────────────────┼──────────────────────────────────────┐
+      ▼                                      ▼                                      ▼
+1. Raw Instance XBRL                   2. Inline XBRL (iXBRL)                 3. Excel Spreadsheet
+   (`instance.xbrl`)                      (`1000000.html`, `1210000.html`)       (`FinancialStatement-*.xlsx`)
+   ────────────────                    ─────────────────────────              ─────────────────────────────
+   • Single 3.6MB XML document         • HTML files with `<ix:nonFraction>`   • Standard Excel workbook
+   • Standard `<xbrli:xbrl>` root       • Human-readable + Machine-tagged     • Direct worksheet projection
+   • 3,000+ distinct contexts          • Sheet-by-sheet organization          • Uses same numerical codes
+   • Direct, pure XML facts            • Full styling & footnotes             • Derived from the XBRL data
 ```
-
-#### B. Correspondence Between XBRL Taxonomy & Downloaded `.xlsx` Files
-The downloaded Excel files in `/saham/*.xlsx` are structured direct projections of this XBRL taxonomy:
-- **Sheet `1000000` / `InfoUmum`**: Corresponds to `idx-dei` (EntityTickerSymbol, EntityName, PeriodEndDate, GeneralInformation).
-- **Sheet `1110000` / `1210000` / `Neraca`**: Corresponds to `idx-general-BS-CAL-1210000` (Statement of Financial Position).
-- **Sheet `1311000` / `1321000` / `RugiLaba`**: Corresponds to `idx-general-PL-CAL-1311000` (Statement of Profit or Loss).
-- **Sheet `1410000`**: Corresponds to `idx-general-CE-DEF-1410000` (Statement of Changes in Equity).
-- **Sheet `1510000` / `CashFlow`**: Corresponds to `idx-general-CF-CAL-1510000` (Statement of Cash Flows).
-- **Sheets `1611000` to `1697000`**: Granular Breakdown Notes (PPE, Right-of-Use Assets, Revenue Breakdown, Bank Loans, Bonds).
-
-#### C. Deterministic XBRL Concept Tag Mappings
-The parser targets exact taxonomy tags (`idx-cor:`) across industry entry points:
-
-| Concept / Metric | IDX XBRL Element ID (`idx-cor:`) | Primary Sheet | Balance | Period Type |
-| :--- | :--- | :--- | :--- | :--- |
-| **Total Assets** | `Assets` | `1110000` / `1210000` | Debit | Instant |
-| **Cash & Equivalents** | `CashAndCashEquivalents` | `1110000` / `1210000` | Debit | Instant |
-| **Current Assets** | `CurrentAssets` | `1110000` / `1210000` | Debit | Instant |
-| **Total Liabilities** | `Liabilities` | `1110000` / `1210000` | Credit | Instant |
-| **Current Liabilities** | `CurrentLiabilities` | `1110000` / `1210000` | Credit | Instant |
-| **Short-term Bank Debt** | `ShortTermBankLoans` | `1110000` / `1693000` | Credit | Instant |
-| **Long-term Bank Debt** | `LongTermBankLoans` | `1110000` / `1691000` | Credit | Instant |
-| **Total Equity** | `Equity` / `TotalEquity` | `1110000` / `1410000` | Credit | Instant |
-| **Retained Earnings** | `RetainedEarningsUnappropriated` | `1110000` / `1410000` | Credit | Instant |
-| **Revenue / Sales** | `SalesAndRevenue` / `Revenues` | `1311000` / `1321000` | Credit | Duration |
-| **Cost of Goods Sold** | `CostOfSalesAndRevenue` | `1311000` / `1670000` | Debit | Duration |
-| **Gross Profit** | `GrossProfit` | `1311000` | Credit | Duration |
-| **Operating Profit (EBIT)** | `OperatingIncomeExpense` | `1311000` | Credit | Duration |
-| **Finance Costs (Interest)** | `FinanceCosts` | `1311000` | Debit | Duration |
-| **Net Income** | `ProfitLoss` / `ProfitLossAttributableToOwnersOfParentEntity` | `1311000` | Credit | Duration |
-| **Operating Cash Flow (CFO)**| `NetCashFlowsFromUsedInOperatingActivities` | `1510000` | Debit | Duration |
-| **Capital Expenditures (CapEx)**| `PaymentsForPropertyPlantEquipment` | `1510000` / `1611000`| Credit | Duration |
-| **Shares Outstanding** | `WeightedAverageShares` / `NumberOfIssuedAndFullyPaidShares` | `1000000` / `1311000` | - | Instant |
 
 ---
 
-### 3.2 Mathematical Formulas & Line-Item Extractions
+### 3.2 Native Go XBRL Parser Architecture (`instance.xbrl`)
+
+Parsing native `instance.xbrl` directly in Go via streaming XML (`encoding/xml`) offers massive advantages over brittle spreadsheet cell extraction:
+- **100% Semantic Fidelity:** No cell coordinate drifts or multilingual translation errors.
+- **Microsecond Parsing Speed:** Direct SAX-style token streaming without heavy spreadsheet rendering overhead.
+- **Context-Aware Multi-Year Extraction:** A single file contains `CurrentYearInstant`, `PriorEndYearInstant`, `CurrentYearDuration`, and `PriorYearDuration` contexts.
+
+#### Go XBRL Struct & Parser Blueprint
+
+```go
+package xbrl
+
+import (
+	"encoding/xml"
+	"io"
+	"strconv"
+	"strings"
+)
+
+type InstanceFact struct {
+	XMLName    xml.Name
+	ContextRef string `xml:"contextRef,attr"`
+	UnitRef    string `xml:"unitRef,attr"`
+	Decimals   string `xml:"decimals,attr"`
+	Scale      string `xml:"scale,attr"`
+	IsNil      bool   `xml:"nil,attr"`
+	Value      string `xml:",chardata"`
+}
+
+type ParsedStatement struct {
+	Ticker             string
+	EntityName         string
+	Sector             string
+	PeriodEndDate      string
+	Currency           string
+	TotalAssets        float64
+	CashAndEquivalents float64
+	TotalLiabilities   float64
+	TotalEquity        float64
+	Revenue            float64
+	GrossProfit        float64
+	NetIncome          float64
+	OperatingCashFlow  float64
+	CapEx              float64
+}
+```
+
+---
+
+### 3.3 Complete Line-Item Mapping Catalog (Verified from Real IDX Filings)
+
+#### 1. Document and Entity Information (`idx-dei:`)
+| DEI Concept | XML Tag | Description / Example (AADI Filing) |
+| :--- | :--- | :--- |
+| **Entity Ticker** | `idx-dei:EntityCode` | `AADI`, `BBRI`, `TLKM` |
+| **Entity Legal Name** | `idx-dei:EntityName` | `PT Adaro Andalan Indonesia Tbk` |
+| **Sector** | `idx-dei:Sector` | `A. Energy` |
+| **Subsector** | `idx-dei:Subsector` | `A1. Oil, Gas & Coal` |
+| **Industry** | `idx-dei:Industry` | `A12. Coal` |
+| **Subindustry** | `idx-dei:Subindustry` | `A121. Coal Production` |
+| **Filing Period** | `idx-dei:PeriodOfFinancialStatementsSubmissions` | `Kuartal I / First Quarter`, `Tahunan / Annual` |
+| **Period End Date** | `idx-dei:CurrentPeriodEndDate` | `2026-03-31` |
+| **Presentation Currency** | `idx-dei:DescriptionOfPresentationCurrency` | `Dollar Amerika / USD`, `Rupiah / IDR` |
+| **Level of Rounding** | `idx-dei:LevelOfRoundingUsedInFinancialStatements` | `Ribuan / In Thousand`, `Satuan Penuh` |
+| **Audit Status** | `idx-dei:TypeOfReportOnFinancialStatements` | `Tidak Diaudit / Unaudit`, `Diaudit / Audited` |
+| **Auditor Opinion** | `idx-dei:TypeOfAuditorsOpinion` | `Wajar Tanpa Pengecualian / Unqualified` |
+
+---
+
+#### 2. Core Financial Concepts (`idx-cor:`)
+| Financial Concept | XML Tag (`idx-cor:`) | Context Required | Sample Metric Value (AADI Q1 2026) |
+| :--- | :--- | :--- | :--- |
+| **Total Assets** | `Assets` | `CurrentYearInstant` | `$5,780,540,000` |
+| **Cash & Cash Equivalents** | `CashAndCashEquivalents` | `CurrentYearInstant` | `$914,431,000` |
+| **Total Liabilities** | `Liabilities` | `CurrentYearInstant` | `$1,999,310,000` |
+| **Total Equity** | `Equity` | `CurrentYearInstant` | `$3,781,230,000` |
+| **Sales & Revenue** | `SalesAndRevenue` | `CurrentYearDuration` | `$1,044,192,000` |
+| **Gross Profit** | `GrossProfit` | `CurrentYearDuration` | `$257,553,000` |
+| **Net Income / Profit** | `ProfitLoss` | `CurrentYearDuration` | `$153,768,000` |
+| **Operating Cash Flow** | `NetCashFlowsFromUsedInOperatingActivities` | `CurrentYearDuration` | Extracted from `1510000` / `CashFlow` |
+| **Capital Expenditures** | `PaymentsForPropertyPlantEquipment` | `CurrentYearDuration` | Extracted from `1510000` / `CashFlow` |
+
+---
+
+### 3.4 Mathematical Formulas & Line-Item Extractions
 
 The engine extracts historical line items across trailing twelve months (TTM) and multi-year annuals:
 
