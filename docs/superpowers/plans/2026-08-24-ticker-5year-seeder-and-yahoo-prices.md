@@ -30,20 +30,23 @@
 - Create: `internal/infra/yahoo/client_test.go`
 - Create: `internal/infra/db/mongo/price_repo.go`
 - Create: `internal/infra/db/mongo/price_repo_test.go`
+- Create: `cmd/price_updater/main.go`
 
 **Interfaces:**
 - `yahoo.FetchHistoricalPrices(ticker string, rangePeriod string) ([]PriceCandle, error)`
 - `mongo.PriceRepository`: `UpsertCandles(ctx, ticker, candles)`, `GetPrices(ctx, ticker, limit)`
+- `cmd/price_updater`: Daily market close cron CLI command (`0 17 * * 1-5`) updating prices and refreshing valuation multiples.
 
 - [ ] **Step 1: Write test for Yahoo Finance price client**
 - [ ] **Step 2: Implement `internal/infra/yahoo/client.go`**
 - [ ] **Step 3: Implement `internal/infra/db/mongo/price_repo.go` with `{ ticker: 1, date: -1 }` unique index**
-- [ ] **Step 4: Run tests (`go test -v ./internal/infra/yahoo/... ./internal/infra/db/mongo/...`)**
-- [ ] **Step 5: Commit Task 1**
+- [ ] **Step 4: Implement `cmd/price_updater/main.go` for daily market close cron execution**
+- [ ] **Step 5: Run tests (`go test -v ./internal/infra/yahoo/... ./internal/infra/db/mongo/...`)**
+- [ ] **Step 6: Commit Task 1**
 
 ```bash
-git add internal/infra/yahoo/ internal/infra/db/mongo/
-git commit -m "feat(prices): implement Yahoo Finance historical price client and MongoDB price repository"
+git add internal/infra/yahoo/ internal/infra/db/mongo/ cmd/price_updater/
+git commit -m "feat(prices): implement Yahoo Finance price client, MongoDB repository and daily price updater cron CLI"
 ```
 
 ---
