@@ -238,7 +238,16 @@ func (c *Client) FetchHistoricalPricesWithContext(ctx context.Context, ticker st
 			closeVal = *quotes.Close[i]
 		}
 
-		// Skip rows where close price is unpopulated or missing
+		// If close is nil/zero (common for the unfinalized current session candle), use regular market price or open
+		if closeVal == 0 {
+			if i == len(timestamps)-1 && res.Meta.RegularMarketPrice > 0 {
+				closeVal = res.Meta.RegularMarketPrice
+			} else if open > 0 {
+				closeVal = open
+			}
+		}
+
+		// Skip rows where all price fields are completely zero
 		if closeVal == 0 && open == 0 && high == 0 && low == 0 {
 			continue
 		}
@@ -246,6 +255,8 @@ func (c *Client) FetchHistoricalPricesWithContext(ctx context.Context, ticker st
 		adjClose := closeVal
 		if i < len(adjCloses) && adjCloses[i] != nil && *adjCloses[i] > 0 {
 			adjClose = *adjCloses[i]
+		} else if adjClose == 0 {
+			adjClose = closeVal
 		}
 
 		var volume int64
@@ -280,7 +291,12 @@ func (c *Client) FetchLatestPrice(ctx context.Context, ticker string) (float64, 
 	if len(candles) == 0 {
 		return 0, fmt.Errorf("no price data found for %s", ticker)
 	}
-	return candles[len(candles)-1].Close, nil
+	for i := len(candles) - 1; i >= 0; i-- {
+		if candles[i].Close > 0 {
+			return candles[i].Close, nil
+		}
+	}
+	return 0, fmt.Errorf("no positive close price found for %s", ticker)
 }
 
 // FetchUSDIDR fetches the latest USD to IDR exchange rate from Yahoo Finance.

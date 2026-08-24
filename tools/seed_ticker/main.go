@@ -289,8 +289,13 @@ func run() error {
 			logger.Error("Failed to persist price candles to MongoDB", zap.String("ticker", cleanTicker), zap.Error(err))
 			fmt.Printf("  Warning: Failed to persist price candles: %v\n", err)
 		} else {
+			for i := len(candles) - 1; i >= 0; i-- {
+				if candles[i].Close > 0 {
+					latestPrice = candles[i].Close
+					break
+				}
+			}
 			latestCandle := candles[len(candles)-1]
-			latestPrice = latestCandle.Close
 			logger.Info("Ingested historical price candles",
 				zap.String("ticker", cleanTicker),
 				zap.Int("candles_count", len(candles)),

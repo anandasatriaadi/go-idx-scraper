@@ -138,8 +138,13 @@ func main() {
 			continue
 		}
 
-		latestCandle := candles[len(candles)-1]
-		latestPrice := latestCandle.Close
+		var latestPrice float64
+		for j := len(candles) - 1; j >= 0; j-- {
+			if candles[j].Close > 0 {
+				latestPrice = candles[j].Close
+				break
+			}
+		}
 
 		// Refresh valuation in latest XBRL statement if present
 		stmts, err := xbrlRepo.FindHistoricalByTicker(ctx, cleanTicker, 2)
