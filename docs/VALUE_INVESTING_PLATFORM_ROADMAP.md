@@ -37,26 +37,35 @@
 
 This document is an exhaustive engineering and financial specification designed to onboard any engineer, data analyst, or financial professional to the **go-idx-scraper** and **idx-web** ecosystem.
 
-### Current System Capabilities (Baseline)
+### Current System Capabilities (Production Status)
 The current repository is divided into two decoupled layers:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 1. DATA COLLECTION & INTELLIGENCE ENGINE (Go 1.24+ / DDD Hexagonal)          │
-│    - Downloader CLI: Downloads .xlsx financial statements for 900+ tickers  │
+│ 1. DATA COLLECTION & INTELLIGENCE ENGINE (Go 1.24+ / DDD Hexagonal) [ACTIVE]│
+│    - Downloader CLI: Downloads XBRL instance.zip and Excel financial reports│
+│    - XBRL Parser CLI (`cmd/xbrl_parser`): Native Go XML streaming parser    │
+│    - Valuation Engine: ROIC, Piotroski F-Score (0-9), Altman Z'', Graham No │
 │    - Scraper CLI: Multi-channel Kontan scraper (investasi + keuangan)       │
 │    - Daily Briefing Engine: Runs at 7 AM GMT+8 using Gemini 3.7 Flash        │
 │    - Announcer CLI: Scrapes official IDX disclosure attachments             │
-│    - Database: MongoDB persistence for news, disclosures, and briefings     │
+│    - Makefile: Unified runner (`make web`, `make briefing`, `make parse-xbrl`)
+│    - Database: MongoDB persistence (`xbrl_statements`, `daily_briefings`, etc)
 └──────────────────────────────────────┬──────────────────────────────────────┘
                                        │
                                        ▼ MongoDB URI
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 2. API & TERMINAL DASHBOARD (Nuxt 4 / Nitro / Vue 3 / Firebase Auth)        │
+│ 2. API & TERMINAL DASHBOARD (Nuxt 4 / Nitro / Vue 3 / Firebase Auth) [ACTIVE]│
 │    - Dark Bloomberg-inspired Terminal (http://localhost:3000)               │
-│    - Public API Endpoints (/api/v1/briefings, /api/v1/news, /api/v1/user)   │
-│    - Firebase Client & Admin SDK Token Verification                         │
-│    - Live Watchlist Sync                                                    │
+│    - Views: Overview, Daily Briefing, Value Screener, News, Disclosures     │
+│    - Modals: Ticker 360° Financials, Article Reader, Firebase Auth          │
+│    - API Endpoints:                                                         │
+│      • /api/v1/briefings/latest, /api/v1/briefings                          │
+│      • /api/v1/news (supports ?ticker=..., ?industry=...)                   │
+│      • /api/v1/stocks/:ticker/financials                                    │
+│      • /api/v1/screener/value (filters: min_mos, min_roic, min_f_score, etc) │
+│      • /api/v1/announcements, /api/v1/financial-reports, /api/v1/user        │
+│    - Firebase Client & Admin SDK Token Verification + Watchlist Sync        │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -461,15 +470,15 @@ The background engine constantly correlates portfolio holdings against new incom
 
 ---
 
-## 8. Phased Implementation Guide
+## 8. Phased Implementation Guide & Execution Status
 
-| Phase | Milestone | Core Deliverables | Target Architecture |
-| :--- | :--- | :--- | :--- |
-| **Phase 1** | **Financial Statement Parser (Pillar 1)** | • Go parser for `/saham/*.xlsx` (Neraca, RugiLaba, CashFlow).<br>• Metric calculations (ROIC, FCF, F-Score, Altman Z).<br>• DCF & Graham Number calculation.<br>• MongoDB collection `financial_metrics`. | Go CLI + MongoDB |
-| **Phase 2** | **Value Screener & Valuation UI** | • Nuxt API endpoints `/api/v1/stocks/:ticker/financials`.<br>• Interactive **Value Screener** tab on Dark Terminal.<br>• Filtering by Margin of Safety, ROIC, and Debt levels. | Nuxt 4 Frontend + Nitro |
-| **Phase 3** | **On-Demand 1-Page AI Dossier (Pillar 2)** | • OpenRouter Gemini 3.7 Flash structured memo synthesis.<br>• Ticker 360° Drawer / Modal on terminal.<br>• Moat rating, Capital Allocation grade, and Buy target. | Gemini 3.7 + Vue 3 Modal |
-| **Phase 4** | **Insider Trades & Corporate Integrity (Pillar 3)** | • Scraper for Director/Commissioner stock filings.<br>• Buyback tracking vs. dilution alert engine.<br>• Dividend safety & yield forecaster. | Go Scraper + MongoDB |
-| **Phase 5** | **Portfolio Health & Moat Monitor (Pillar 4)** | • Firebase-authenticated user portfolio tracking.<br>• Automated alerts for auditor red flags & moat degradation.<br>• Portfolio-weighted ROIC and cash flow yield summary. | Full Stack Nuxt 4 + Firebase |
+| Phase | Milestone | Core Deliverables | Target Architecture | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **Phase 1** | **Native Go XBRL Streaming Parser & Valuation Engine (Pillar 1)** | • Native Go XML streaming parser (`internal/infra/xbrl/parser.go`).<br>• 700+ raw facts map persistence (`FactMap`).<br>• Metric calculations (ROIC, FCF, Piotroski F-Score 0–9, Altman Z''-Score).<br>• Benjamin Graham Number & Margin of Safety % calculation.<br>• MongoDB collection `xbrl_statements` & `cmd/xbrl_parser` CLI tool. | Go CLI + MongoDB | **✅ COMPLETED & PRODUCTION READY** |
+| **Phase 2** | **Value Screener & Ticker 360° Financials UI** | • Nuxt API endpoints `/api/v1/stocks/:ticker/financials` and `/api/v1/screener/value`.<br>• Interactive **Value Screener** tab with strategy presets (*Deep Value*, *Buffett Moat*, *High F-Score*).<br>• **Ticker 360° Financials Modal** with valuation gauge and multi-year 3-statement trends. | Nuxt 4 Frontend + Nitro API | **✅ COMPLETED & PRODUCTION READY** |
+| **Phase 3** | **On-Demand 1-Page AI Dossier & Due Diligence Memo (Pillar 2)** | • OpenRouter Gemini 3.7 Flash structured memo synthesis.<br>• Integration into Ticker 360° Drawer / Modal.<br>• Moat rating, Capital Allocation grade, 3 Bull drivers, 3 Bear risks, and Buy target price. | Gemini 3.7 + Vue 3 Modal | **⏳ PLANNED (NEXT MILESTONE)** |
+| **Phase 4** | **Insider Trades & Corporate Integrity (Pillar 3)** | • Scraper for Director/Commissioner stock filings (`POJK 11/2017`).<br>• Buyback tracking vs. dilution alert engine ($-\Delta\text{Shares}$ vs. $+\Delta\text{Shares}$).<br>• Dividend safety & FCF payout coverage forecaster. | Go Scraper + MongoDB | **⏳ PLANNED** |
+| **Phase 5** | **Portfolio Health & Moat Monitor (Pillar 4)** | • Firebase-authenticated user portfolio tracking (`user_portfolios`).<br>• Automated alerts for auditor red flags, margin contractions, & debt distress.<br>• Portfolio-weighted ROIC and cash flow yield summary. | Full Stack Nuxt 4 + Firebase | **⏳ PLANNED** |
 
 ---
 
