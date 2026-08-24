@@ -1,0 +1,150 @@
+package xbrl
+
+import (
+	"math"
+)
+
+// ComputeValuationAndRatios calculates ROIC, Piotroski, Altman Z, Graham Fair Value, and MOS
+func ComputeValuationAndRatios(stmt *Statement, priorStmt *Statement, currentStockPrice float64) error {
+	c := &stmt.Core
+	r := &stmt.ComputedRatios
+	v := &stmt.Valuation
+
+	// 1. Profitability & Margins
+	if c.Revenue > 0 {
+		r.GrossMarginPct = (c.GrossProfit / c.Revenue) * 100
+		r.OperatingMarginPct = (c.OperatingIncome / c.Revenue) * 100
+		r.NetMarginPct = (c.NetIncome / c.Revenue) * 100
+	}
+	if c.TotalEquity > 0 {
+		r.ROE = c.NetIncome / c.TotalEquity
+	}
+	if c.TotalAssets > 0 {
+		r.ROA = c.NetIncome / c.TotalAssets
+	}
+
+	// 2. Return on Invested Capital (ROIC)
+	investedCapital := (c.TotalEquity + c.TotalDebt) - c.CashAndEquivalents
+	nopat := c.OperatingIncome * (1 - 0.22) // 22% Indonesian standard corporate tax rate
+	if investedCapital > 0 {
+		r.ROIC = nopat / investedCapital
+	}
+
+	// 3. Leverage & Solvency
+	if c.TotalEquity > 0 {
+		r.DebtToEquity = c.TotalDebt / c.TotalEquity
+	}
+	r.NetDebt = c.TotalDebt - c.CashAndEquivalents
+	if c.FinanceCosts > 0 {
+		r.InterestCoverageRatio = c.OperatingIncome / c.FinanceCosts
+	}
+	if c.CurrentLiabilities > 0 {
+		r.CurrentRatio = c.CurrentAssets / c.CurrentLiabilities
+	}
+	if c.NetIncome > 0 {
+		r.FCFConversionPct = (c.FreeCashFlow / c.NetIncome) * 100
+	}
+
+	// 4. Emerging Market Altman Z''-Score
+	if c.TotalAssets > 0 && c.TotalLiabilities > 0 {
+		workingCapital := c.CurrentAssets - c.CurrentLiabilities
+		x1 := workingCapital / c.TotalAssets
+		x2 := c.RetainedEarnings / c.TotalAssets
+		x3 := c.OperatingIncome / c.TotalAssets
+		x4 := c.TotalEquity / c.TotalLiabilities
+		r.AltmanZScore = (6.56 * x1) + (3.26 * x2) + (6.72 * x3) + (1.05 * x4)
+	}
+
+	// 5. Piotroski F-Score (0 to 9)
+	fScore := 0
+	if r.ROA > 0 {
+		fScore++
+	}
+	if c.OperatingCashFlow > 0 {
+		fScore++
+	}
+	if c.OperatingCashFlow > c.NetIncome {
+		fScore++
+	}
+	if priorStmt != nil {
+		if r.ROA > priorStmt.ComputedRatios.ROA {
+			fScore++
+		}
+		if c.LongTermDebt < priorStmt.Core.LongTermDebt {
+			fScore++
+		}
+		if r.CurrentRatio > priorStmt.ComputedRatios.CurrentRatio {
+			fScore++
+		}
+		if c.SharesOutstanding <= priorStmt.Core.SharesOutstanding {
+			fScore++
+		}
+		if r.GrossMarginPct > priorStmt.ComputedRatios.GrossMarginPct {
+			fScore++
+		}
+		assetTurnoverCurr := c.Revenue / c.TotalAssets
+		assetTurnoverPrior := 0.0
+		if priorStmt.Core.TotalAssets > 0 {
+			assetTurnoverPrior = priorStmt.Core.Revenue / priorStmt.Core.TotalAssets
+		}
+		if assetTurnoverCurr > assetTurnoverPrior {
+			fScore++
+		}
+	} else {
+		// Single period baseline heuristics
+		if r.CurrentRatio > 1.2 {
+			fScore++
+		}
+		if r.DebtToEquity < 1.0 {
+			fScore++
+		}
+		if r.GrossMarginPct > 20.0 {
+			fScore++
+		}
+		fScore += 2 // Neutral prior credit
+	}
+	if fScore > 9 {
+		fScore = 9
+	}
+	r.PiotroskiFScore = fScore
+
+	// 6. Currency Normalization (USD -> IDR)
+	fxRate := 1.0
+	if stmt.Metadata.Currency == "USD" {
+		if stmt.Metadata.ConversionRate > 0 {
+			fxRate = stmt.Metadata.ConversionRate
+		} else {
+			fxRate = 16000.0 // Conservative default if unpopulated
+		}
+	}
+
+	shares := c.SharesOutstanding
+	if shares <= 0 {
+		shares = 1.0
+	}
+
+	// Normalized per-share values in IDR
+	v.NormalizedEPS = (c.NetIncome * fxRate) / shares
+	v.NormalizedBVPS = (c.TotalEquity * fxRate) / shares
+
+	// 7. Benjamin Graham Fair Value Formula
+	if v.NormalizedEPS > 0 && v.NormalizedBVPS > 0 {
+		v.GrahamNumber = math.Sqrt(22.5 * v.NormalizedEPS * v.NormalizedBVPS)
+	}
+
+	// 8. Valuation Multiples & Margin of Safety
+	v.CurrentPrice = currentStockPrice
+	if currentStockPrice > 0 {
+		if v.NormalizedEPS > 0 {
+			v.PERatio = currentStockPrice / v.NormalizedEPS
+		}
+		if v.NormalizedBVPS > 0 {
+			v.PBRatio = currentStockPrice / v.NormalizedBVPS
+		}
+		if v.GrahamNumber > 0 {
+			v.MarginOfSafetyPct = ((v.GrahamNumber - currentStockPrice) / v.GrahamNumber) * 100
+		}
+	}
+
+	return nil
+}
