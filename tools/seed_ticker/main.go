@@ -21,6 +21,7 @@ import (
 	br "github.com/anandasatriaadi/go-idx-scraper/internal/browser"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/finreport"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/stock"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/xbrl"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/db/mongo"
@@ -330,6 +331,17 @@ func run() error {
 		return nil
 	}
 
+	// If price candles not in memory, query from MongoDB stock_prices
+	if len(candles) == 0 {
+		dbCandles, pErr := priceRepo.GetPrices(ctx, cleanTicker, 1250)
+		if pErr == nil && len(dbCandles) > 0 {
+			candles = make([]stock.PriceCandle, len(dbCandles))
+			for k, c := range dbCandles {
+				candles[k] = *c
+			}
+		}
+	}
+
 	// Sort chronologically (oldest to newest) to pass prior statement YoY for Piotroski F-score
 	sort.Slice(statements, func(i, j int) bool {
 		if statements[i].Year != statements[j].Year {
@@ -352,11 +364,20 @@ func run() error {
 			logger.Warn("Valuation calculation error", zap.String("ticker", cleanTicker), zap.Int("year", stmt.Year), zap.Error(err))
 		}
 
+		if len(candles) > 0 {
+			bands := xbrl.ComputeValuationBands(candles, stmt.Valuation.NormalizedEPS, stmt.Valuation.NormalizedBVPS)
+			timing := xbrl.ComputeTimingSignals(candles, bands, stmt.Valuation.NormalizedEPS, stmt.Valuation.NormalizedBVPS)
+			stmt.ValuationBands = &bands
+			stmt.TimingSignal = &timing
+			stmt.Valuation.ValuationBands = &bands
+			stmt.Valuation.TimingSignal = &timing
+		}
+
 		if err := xbrlRepo.Upsert(ctx, stmt); err != nil {
 			logger.Error("Failed to persist updated valuation", zap.String("ticker", cleanTicker), zap.Int("year", stmt.Year), zap.Error(err))
 		}
 	}
-	fmt.Printf("  Recomputed valuation multiples and forensic metrics across %d filing periods.\n", len(statements))
+	fmt.Printf("  Recomputed valuation multiples, valuation bands, and timing signals across %d filing periods.\n", len(statements))
 
 	// Step 6: Print Formatted 5-Year Forensic Valuation Report Table
 	printValuationReport(cleanTicker, statements, latestPrice, usdidr)
@@ -645,6 +666,66 @@ func printValuationReport(ticker string, statements []*xbrl.Statement, currentPr
 	}
 	fmt.Printf(" * Valuation Multiples: P/E: %s | P/B: %s | ROIC: %.2f%% | ROE: %.2f%%\n",
 		peStr, pbStr, latest.ComputedRatios.ROIC*100, latest.ComputedRatios.ROE*100)
+
+	// Quantitative Timing & VSA Signals
+	if sig := latest.TimingSignal; sig != nil {
+		fmt.Println("------------------------------------------------------------------------------------------------------------------------")
+		fmt.Println("                              QUANTITATIVE TIMING & VOLUME SPREAD ANALYSIS (VSA)                                       ")
+		fmt.Println("------------------------------------------------------------------------------------------------------------------------")
+		fmt.Printf(" * Smart Timing Score:  %d/100 -> [%s]\n", sig.Score, sig.Status)
+
+		divStr := "No"
+		if sig.RSIBullishDivergence {
+			divStr = "YES (Bullish Divergence Detected)"
+		}
+		fmt.Printf(" * RSI (14-Period):     %.2f | Bullish Divergence: %s\n", sig.RSI, divStr)
+
+		stopStr := "No"
+		if sig.StoppingVolume {
+			stopStr = "DETECTED (Smart Money Absorption: High RVOL + High CLV)"
+		}
+		vduStr := "No"
+		if sig.VolumeDryUp {
+			vduStr = "YES (Base Tightening: 5d Volume <= 50% 20d SMA)"
+		}
+		fmt.Printf(" * VSA Stopping Volume: %s (RVOL: %.2fx, CLV: %+.2f)\n", stopStr, sig.RVOL, sig.CLV)
+		fmt.Printf(" * Volume Dry-Up (VDU): %s (VDU Ratio: %.2f)\n", vduStr, sig.VDU)
+		if sig.ValuationDiscountZone != "" {
+			fmt.Printf(" * Valuation Zone:      %s Band\n", sig.ValuationDiscountZone)
+		}
+		if len(sig.Signals) > 0 {
+			fmt.Println(" * Active Catalysts:")
+			for _, s := range sig.Signals {
+				fmt.Printf("   - %s\n", s)
+			}
+		}
+	}
+
+	// Valuation Mean-Reversion Bands
+	if bands := latest.ValuationBands; bands != nil {
+		fmt.Println("------------------------------------------------------------------------------------------------------------------------")
+		fmt.Println("                              HISTORICAL VALUATION MEAN-REVERSION BANDS (P/E & P/B)                                    ")
+		fmt.Println("------------------------------------------------------------------------------------------------------------------------")
+		if bands.MeanPE > 0 {
+			fmt.Printf(" * P/E Standard Deviation Bands (Mean: %.2fx, StdDev: %.2fx):\n", bands.MeanPE, bands.StdDevPE)
+			fmt.Printf("   +2.0 SD: %6.2fx  (IDR %.2f)\n", bands.Plus2SD_PE, bands.Plus2SDPrice_PE)
+			fmt.Printf("   +1.0 SD: %6.2fx  (IDR %.2f)\n", bands.Plus1SD_PE, bands.Plus1SDPrice_PE)
+			fmt.Printf("   Mean:    %6.2fx  (IDR %.2f)\n", bands.MeanPE, bands.MeanPrice_PE)
+			fmt.Printf("   -1.0 SD: %6.2fx  (IDR %.2f)\n", bands.Minus1SD_PE, bands.Minus1SDPrice_PE)
+			fmt.Printf("   -2.0 SD: %6.2fx  (IDR %.2f)\n", bands.Minus2SD_PE, bands.Minus2SDPrice_PE)
+		}
+		if bands.MeanPB > 0 {
+			if bands.MeanPE > 0 {
+				fmt.Println()
+			}
+			fmt.Printf(" * P/B Standard Deviation Bands (Mean: %.2fx, StdDev: %.2fx):\n", bands.MeanPB, bands.StdDevPB)
+			fmt.Printf("   +2.0 SD: %6.2fx  (IDR %.2f)\n", bands.Plus2SD_PB, bands.Plus2SDPrice_PB)
+			fmt.Printf("   +1.0 SD: %6.2fx  (IDR %.2f)\n", bands.Plus1SD_PB, bands.Plus1SDPrice_PB)
+			fmt.Printf("   Mean:    %6.2fx  (IDR %.2f)\n", bands.MeanPB, bands.MeanPrice_PB)
+			fmt.Printf("   -1.0 SD: %6.2fx  (IDR %.2f)\n", bands.Minus1SD_PB, bands.Minus1SDPrice_PB)
+			fmt.Printf("   -2.0 SD: %6.2fx  (IDR %.2f)\n", bands.Minus2SD_PB, bands.Minus2SDPrice_PB)
+		}
+	}
 
 	fmt.Println("========================================================================================================================")
 }

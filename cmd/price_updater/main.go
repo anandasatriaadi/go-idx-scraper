@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/stock"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/xbrl"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/db/mongo"
@@ -146,6 +147,18 @@ func main() {
 			}
 		}
 
+		// Fetch historical candles from MongoDB for rolling valuation bands & momentum timing
+		allDbCandles, pErr := priceRepo.GetPrices(ctx, cleanTicker, 1250)
+		var fullCandles []stock.PriceCandle
+		if pErr == nil && len(allDbCandles) > 0 {
+			fullCandles = make([]stock.PriceCandle, len(allDbCandles))
+			for k, c := range allDbCandles {
+				fullCandles[k] = *c
+			}
+		} else {
+			fullCandles = candles
+		}
+
 		// Refresh valuation in latest XBRL statement if present
 		stmts, err := xbrlRepo.FindHistoricalByTicker(ctx, cleanTicker, 2)
 		if err == nil && len(stmts) > 0 {
@@ -158,16 +171,33 @@ func main() {
 			if err := xbrl.ComputeValuationAndRatios(latestStmt, priorStmt, latestPrice); err != nil {
 				logger.Warn("Failed to recompute valuation with latest price", zap.String("ticker", cleanTicker), zap.Error(err))
 			} else {
+				if len(fullCandles) > 0 {
+					bands := xbrl.ComputeValuationBands(fullCandles, latestStmt.Valuation.NormalizedEPS, latestStmt.Valuation.NormalizedBVPS)
+					timing := xbrl.ComputeTimingSignals(fullCandles, bands, latestStmt.Valuation.NormalizedEPS, latestStmt.Valuation.NormalizedBVPS)
+					latestStmt.ValuationBands = &bands
+					latestStmt.TimingSignal = &timing
+					latestStmt.Valuation.ValuationBands = &bands
+					latestStmt.Valuation.TimingSignal = &timing
+				}
+
 				if err := xbrlRepo.Upsert(ctx, latestStmt); err != nil {
 					logger.Warn("Failed to update XBRL statement valuation", zap.String("ticker", cleanTicker), zap.Error(err))
 				} else {
-					logger.Info("Refreshed XBRL valuation multiples",
+					timingScore := 0
+					timingStatus := "N/A"
+					if latestStmt.TimingSignal != nil {
+						timingScore = latestStmt.TimingSignal.Score
+						timingStatus = latestStmt.TimingSignal.Status
+					}
+					logger.Info("Refreshed XBRL valuation multiples & timing signals",
 						zap.String("ticker", cleanTicker),
 						zap.Float64("price", latestPrice),
 						zap.Float64("graham_number", latestStmt.Valuation.GrahamNumber),
 						zap.Float64("margin_of_safety_pct", latestStmt.Valuation.MarginOfSafetyPct),
 						zap.Float64("pe_ratio", latestStmt.Valuation.PERatio),
 						zap.Float64("pb_ratio", latestStmt.Valuation.PBRatio),
+						zap.Int("timing_score", timingScore),
+						zap.String("timing_status", timingStatus),
 					)
 				}
 			}

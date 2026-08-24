@@ -238,6 +238,15 @@ func (c *Client) FetchHistoricalPricesWithContext(ctx context.Context, ticker st
 			closeVal = *quotes.Close[i]
 		}
 
+		// Skip completely null/empty quote intervals
+		var volRaw float64
+		if i < len(quotes.Volume) && quotes.Volume[i] != nil {
+			volRaw = *quotes.Volume[i]
+		}
+		if open == 0 && high == 0 && low == 0 && closeVal == 0 && volRaw == 0 {
+			continue
+		}
+
 		// If close is nil/zero (common for the unfinalized current session candle), use regular market price or open
 		if closeVal == 0 {
 			if i == len(timestamps)-1 && res.Meta.RegularMarketPrice > 0 {
