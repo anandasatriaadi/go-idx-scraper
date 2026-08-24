@@ -1,5 +1,5 @@
 import type { H3Event } from 'h3'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import firebaseAdmin from 'firebase-admin'
 
@@ -18,7 +18,14 @@ function getFirebaseApp(): admin.app.App {
   }
   
   try {
-    const resolvedPath = resolve(credentialsPath)
+    let resolvedPath = resolve(credentialsPath)
+    if (!existsSync(resolvedPath)) {
+      const altPath = resolve(process.cwd(), 'idx-web', credentialsPath)
+      if (existsSync(altPath)) {
+        resolvedPath = altPath
+      }
+    }
+
     const credentials = JSON.parse(readFileSync(resolvedPath, 'utf-8'))
     app = admin.initializeApp({
       credential: admin.credential.cert(credentials),

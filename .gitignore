@@ -1,3 +1,10 @@
 *.yml
 !example_config.yml
 bin/
+*-firebase.json
+firebase-credentials.json
+*-credentials.json
+.superpowers/
+.pi-subagents/
+saham/
+

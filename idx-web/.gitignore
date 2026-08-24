@@ -4,3 +4,7 @@ node_modules
 dist
 .env
 *.local
+*-firebase.json
+firebase-credentials.json
+*-credentials.json
+
