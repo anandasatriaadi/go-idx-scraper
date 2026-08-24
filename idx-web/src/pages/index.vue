@@ -84,7 +84,14 @@ import TickerFinancialsModal from '../components/TickerFinancialsModal.vue'
 import ArticleModal from '../components/ArticleModal.vue'
 import AuthModal from '../components/AuthModal.vue'
 import { useWatchlist } from '../composables/useWatchlist'
-import type { Briefing, News, Announcement } from '../server/utils/types'
+import type { Briefing, News, Announcement, FinancialReport } from '../server/utils/types'
+
+interface PaginatedResponse<T> {
+  data: T[]
+  total: number
+  page: number
+  total_pages: number
+}
 
 const activeTab = ref('overview')
 const showAuthModal = ref(false)
@@ -95,7 +102,7 @@ const filteredTicker = ref('')
 const briefing = ref<Briefing | null>(null)
 const newsList = ref<News[]>([])
 const announcementsList = ref<Announcement[]>([])
-const reportsList = ref<any[]>([])
+const reportsList = ref<FinancialReport[]>([])
 
 const loadingBriefing = ref(true)
 const loadingNews = ref(true)
@@ -117,30 +124,51 @@ const loadData = async () => {
 
   // Fetch News
   try {
-    const n = await $fetch<News[]>('/api/v1/news?limit=50')
-    newsList.value = n || []
+    const n = await $fetch<PaginatedResponse<News> | News[]>('/api/v1/news?limit=50')
+    if (n && 'data' in n && Array.isArray(n.data)) {
+      newsList.value = n.data
+    } else if (Array.isArray(n)) {
+      newsList.value = n
+    } else {
+      newsList.value = []
+    }
   } catch (e) {
     console.error('Failed to load news', e)
+    newsList.value = []
   } finally {
     loadingNews.value = false
   }
 
   // Fetch Announcements
   try {
-    const a = await $fetch<Announcement[]>('/api/v1/announcements?limit=50')
-    announcementsList.value = a || []
+    const a = await $fetch<PaginatedResponse<Announcement> | Announcement[]>('/api/v1/announcements?limit=20')
+    if (a && 'data' in a && Array.isArray(a.data)) {
+      announcementsList.value = a.data
+    } else if (Array.isArray(a)) {
+      announcementsList.value = a
+    } else {
+      announcementsList.value = []
+    }
   } catch (e) {
     console.error('Failed to load announcements', e)
+    announcementsList.value = []
   } finally {
     loadingAnnouncements.value = false
   }
 
   // Fetch Reports
   try {
-    const r = await $fetch<any[]>('/api/v1/financial-reports?limit=50')
-    reportsList.value = r || []
+    const r = await $fetch<PaginatedResponse<FinancialReport> | FinancialReport[]>('/api/v1/financial-reports?limit=20')
+    if (r && 'data' in r && Array.isArray(r.data)) {
+      reportsList.value = r.data
+    } else if (Array.isArray(r)) {
+      reportsList.value = r
+    } else {
+      reportsList.value = []
+    }
   } catch (e) {
     console.error('Failed to load financial reports', e)
+    reportsList.value = []
   } finally {
     loadingReports.value = false
   }
