@@ -1,10 +1,14 @@
 package browser
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
 	"github.com/tebeka/selenium"
@@ -83,10 +87,39 @@ func SetupSelenium(cfg *config.Config) (*SeleniumBrowser, error) {
 		return nil, fmt.Errorf("failed to connect to WebDriver: %w", err)
 	}
 
+	// Enable headless / remote downloading via CDP
+	if cfg.Paths.DownloadDir != "" {
+		enableDownloadsInChrome(port, driver.SessionID(), cfg.Paths.DownloadDir)
+	}
+
 	return &SeleniumBrowser{
 		Service: service,
 		Driver:  driver,
 	}, nil
+}
+
+func enableDownloadsInChrome(port int, sessionID string, downloadDir string) {
+	absDir, err := filepath.Abs(downloadDir)
+	if err != nil {
+		absDir = downloadDir
+	}
+	commands := []string{"Page.setDownloadBehavior", "Browser.setDownloadBehavior"}
+	for _, cmd := range commands {
+		payload := map[string]any{
+			"cmd": cmd,
+			"params": map[string]any{
+				"behavior":      "allow",
+				"downloadPath":  absDir,
+				"eventsEnabled": true,
+			},
+		}
+		body, _ := json.Marshal(payload)
+		url := fmt.Sprintf("http://localhost:%d/session/%s/chromium/send_command", port, sessionID)
+		resp, err := http.Post(url, "application/json", bytes.NewReader(body))
+		if err == nil && resp != nil {
+			resp.Body.Close()
+		}
+	}
 }
 
 func (b *SeleniumBrowser) Close() {

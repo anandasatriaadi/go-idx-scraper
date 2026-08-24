@@ -199,76 +199,105 @@ func run() error {
 
 				ps, modePeriod := finreport.NormalizePeriod(period)
 
-				var url string
-				var targetFilename string
-				var expectedDownloadName string
+				xlsxName := fmt.Sprintf("FinancialStatement-%d-%s-%s.xlsx", year, ps, stockName)
+				instanceZipName := fmt.Sprintf("FinancialStatement-%d-%s-%s-instance.zip", year, modePeriod, stockName)
+				inlineZipName := fmt.Sprintf("FinancialStatement-%d-%s-%s-inlineXBRL.zip", year, modePeriod, stockName)
 
-				if isXlsx {
-					url = fSvc.ConstructReportURL(year, ps, stockName)
-					targetFilename = fmt.Sprintf("FinancialStatement-%d-%s-%s.xlsx", year, ps, stockName)
-					expectedDownloadName = targetFilename
+				// Check if already downloaded
+				alreadyExists := false
+				var existingPath string
+				for _, fn := range []string{instanceZipName, inlineZipName, xlsxName} {
+					tp := filepath.Join(cfg.Paths.DownloadDir, fn)
+					cp := filepath.Join(cfg.Paths.CheckDir, fn)
+					if fileExistsAndNotEmpty(tp) {
+						alreadyExists = true
+						existingPath = tp
+						break
+					}
+					if fileExistsAndNotEmpty(cp) {
+						alreadyExists = true
+						existingPath = cp
+						break
+					}
+				}
+
+				if alreadyExists && !cleanFlag {
+					logger.Info("Filing already downloaded, skipping download", zap.String("file", filepath.Base(existingPath)))
+					if parseFlag {
+						parseAndUpsertXBRL(ctx, existingPath, xbrlRepo, logger)
+					}
+					continue
+				}
+
+				candidates := []struct {
+					url                  string
+					expectedDownloadName string
+					targetFilename       string
+					format               string
+				}{
+					{
+						url:                  fSvc.ConstructXBRLReportURL(year, ps, stockName, "instance.zip"),
+						expectedDownloadName: "instance.zip",
+						targetFilename:       instanceZipName,
+						format:               "instance.zip",
+					},
+					{
+						url:                  fSvc.ConstructXBRLReportURL(year, ps, stockName, "inlineXBRL.zip"),
+						expectedDownloadName: "inlineXBRL.zip",
+						targetFilename:       inlineZipName,
+						format:               "inlineXBRL.zip",
+					},
+					{
+						url:                  fSvc.ConstructReportURL(year, ps, stockName),
+						expectedDownloadName: xlsxName,
+						targetFilename:       xlsxName,
+						format:               ".xlsx",
+					},
+				}
+
+				downloadSuccess := false
+				var savedPath string
+				for _, cand := range candidates {
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					default:
+					}
+
+					logger.Info("Attempting filing download",
+						zap.String("ticker", stockName),
+						zap.Int("year", year),
+						zap.String("period", ps),
+						zap.String("format", cand.format),
+						zap.String("url", cand.url),
+					)
+
+					targetPath := filepath.Join(cfg.Paths.DownloadDir, cand.targetFilename)
+					_ = os.Remove(filepath.Join(cfg.Paths.DownloadDir, cand.expectedDownloadName))
+
+					if err := downloadFile(cand.url, browser.Driver, logger); err != nil {
+						continue
+					}
+
+					if err := waitForDownloadedFile(cfg.Paths.DownloadDir, cand.expectedDownloadName, targetPath, 5*time.Second, logger); err == nil {
+						logger.Info("Successfully downloaded filing", zap.String("file", cand.targetFilename), zap.String("format", cand.format))
+						downloadSuccess = true
+						savedPath = targetPath
+						downloadedCount++
+						break
+					}
+				}
+
+				if downloadSuccess {
+					if parseFlag {
+						parseAndUpsertXBRL(ctx, savedPath, xbrlRepo, logger)
+					}
 				} else {
-					url = fSvc.ConstructXBRLReportURL(year, ps, stockName, fileType)
-					targetFilename = fmt.Sprintf("FinancialStatement-%d-%s-%s-%s", year, modePeriod, stockName, fileType)
-					expectedDownloadName = fileType
-				}
-
-				targetPath := filepath.Join(cfg.Paths.DownloadDir, targetFilename)
-				checkPath := filepath.Join(cfg.Paths.CheckDir, targetFilename)
-
-				if !cleanFlag {
-					if _, err := os.Stat(targetPath); err == nil {
-						logger.Info("File already exists in download directory, skipping", zap.String("file", targetFilename))
-						if parseFlag && !isXlsx {
-							parseAndUpsertXBRL(ctx, targetPath, xbrlRepo, logger)
-						}
-						continue
-					}
-					if _, err := os.Stat(checkPath); err == nil {
-						logger.Info("File already exists in check directory, skipping", zap.String("file", targetFilename))
-						if parseFlag && !isXlsx {
-							parseAndUpsertXBRL(ctx, checkPath, xbrlRepo, logger)
-						}
-						continue
-					}
-				}
-
-				logger.Info("Downloading filing",
-					zap.String("ticker", stockName),
-					zap.Int("year", year),
-					zap.String("period", ps),
-					zap.String("file", targetFilename),
-					zap.String("url", url),
-				)
-
-				tempExpectedPath := filepath.Join(cfg.Paths.DownloadDir, expectedDownloadName)
-				_ = os.Remove(tempExpectedPath)
-
-				if err := downloadFile(url, browser.Driver, logger); err != nil {
-					logger.Warn("Failed to download filing",
+					logger.Warn("Filing not available in any format on IDX (instance.zip, inlineXBRL.zip, .xlsx)",
 						zap.String("ticker", stockName),
 						zap.Int("year", year),
 						zap.String("period", ps),
-						zap.Error(err),
 					)
-					continue
-				}
-
-				if err := waitForDownloadedFile(cfg.Paths.DownloadDir, expectedDownloadName, targetPath, 15*time.Second, logger); err != nil {
-					logger.Warn("Download completion or rename failed",
-						zap.String("ticker", stockName),
-						zap.Int("year", year),
-						zap.String("period", ps),
-						zap.Error(err),
-					)
-					continue
-				}
-
-				logger.Info("Successfully downloaded and saved filing", zap.String("file", targetFilename))
-				downloadedCount++
-
-				if parseFlag && !isXlsx {
-					parseAndUpsertXBRL(ctx, targetPath, xbrlRepo, logger)
 				}
 			}
 		}
@@ -556,26 +585,9 @@ func processVersionUpdates(ctx context.Context, fSvc *finreport.Service, cfg *co
 }
 
 func parseAndUpsertXBRL(ctx context.Context, filePath string, repo xbrl.Repository, logger *zap.Logger) {
-	var stmt *xbrl.Statement
-	var err error
-
-	lowerPath := strings.ToLower(filePath)
-	if strings.HasSuffix(lowerPath, ".zip") {
-		stmt, err = infra.ParseInstanceZip(filePath)
-	} else if strings.HasSuffix(lowerPath, ".xbrl") || strings.HasSuffix(lowerPath, ".xml") {
-		f, oErr := os.Open(filePath)
-		if oErr == nil {
-			stmt, err = infra.ParseInstanceXML(f)
-			f.Close()
-		} else {
-			err = oErr
-		}
-	} else {
-		return
-	}
-
+	stmt, err := infra.ParseAnyFiling(filePath)
 	if err != nil {
-		logger.Warn("Failed to parse XBRL file", zap.String("path", filePath), zap.Error(err))
+		logger.Warn("Failed to parse financial statement file", zap.String("path", filePath), zap.Error(err))
 		return
 	}
 
@@ -584,12 +596,17 @@ func parseAndUpsertXBRL(ctx context.Context, filePath string, repo xbrl.Reposito
 	}
 
 	if err := repo.Upsert(ctx, stmt); err != nil {
-		logger.Error("Failed to upsert XBRL statement into MongoDB", zap.String("ticker", stmt.Ticker), zap.Error(err))
+		logger.Error("Failed to upsert statement into MongoDB", zap.String("ticker", stmt.Ticker), zap.Error(err))
 	} else {
-		logger.Info("Successfully parsed & ingested XBRL statement into MongoDB",
+		logger.Info("Successfully parsed & ingested statement into MongoDB",
 			zap.String("ticker", stmt.Ticker),
 			zap.Int("year", stmt.Year),
 			zap.String("period", stmt.Period),
 		)
 	}
+}
+
+func fileExistsAndNotEmpty(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir() && info.Size() > 0
 }

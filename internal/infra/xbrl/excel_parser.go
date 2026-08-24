@@ -71,6 +71,31 @@ func ParseExcelStatement(filePath string) (*domain.Statement, error) {
 }
 
 func parseExcelGeneralInfo(f *excelize.File, stmt *domain.Statement) {
+	// Initialize Ticker/Year/Period from filename if available
+	base := filepath.Base(stmt.Metadata.SourceFile)
+	parts := strings.Split(base, "-")
+	if len(parts) >= 4 {
+		if y, err := strconv.Atoi(parts[1]); err == nil && y > 2000 {
+			stmt.Year = y
+		}
+		pUpper := strings.ToUpper(parts[2])
+		switch pUpper {
+		case "I", "TW1", "Q1":
+			stmt.Period = "Q1"
+		case "II", "TW2", "Q2":
+			stmt.Period = "Q2"
+		case "III", "TW3", "Q3":
+			stmt.Period = "Q3"
+		case "IV", "TW4", "Q4":
+			stmt.Period = "Q4"
+		case "TAHUNAN", "AUDIT", "FY":
+			stmt.Period = "FY"
+		default:
+			stmt.Period = parts[2]
+		}
+		stmt.Ticker = strings.ToUpper(strings.TrimSuffix(parts[3], filepath.Ext(parts[3])))
+	}
+
 	sheets := f.GetSheetList()
 	var targetSheet string
 	for _, s := range sheets {
@@ -137,21 +162,44 @@ func parseExcelGeneralInfo(f *excelize.File, stmt *domain.Statement) {
 		case strings.Contains(key, "kurs konversi") || strings.Contains(key, "conversion rate"):
 			rate, _ := parseNumericValue(val)
 			stmt.Metadata.ConversionRate = rate
+		case strings.Contains(key, "jumlah saham") || strings.Contains(key, "number of shares") || strings.Contains(key, "outstanding shares") || strings.Contains(key, "disetor penuh") || strings.Contains(key, "modal saham"):
+			if shares, err := parseNumericValue(val); err == nil && shares > 0 {
+				if stmt.Core.SharesOutstanding <= 1 {
+					stmt.Core.SharesOutstanding = shares
+				}
+			}
 		case strings.Contains(key, "periode laporan") || strings.Contains(key, "period of financial"):
 			stmt.PeriodType = val
-			if strings.Contains(val, "Kuartal I") || strings.Contains(val, "First") {
+			valLower := strings.ToLower(val)
+			if strings.Contains(val, "Kuartal I") || strings.Contains(val, "First") || strings.Contains(valLower, "maret") || strings.Contains(valLower, "march") || strings.Contains(val, "-03-") {
 				stmt.Period = "Q1"
-			} else if strings.Contains(val, "Kuartal II") || strings.Contains(val, "Second") {
+			} else if strings.Contains(val, "Kuartal II") || strings.Contains(val, "Second") || strings.Contains(valLower, "juni") || strings.Contains(valLower, "june") || strings.Contains(val, "-06-") {
 				stmt.Period = "Q2"
-			} else if strings.Contains(val, "Kuartal III") || strings.Contains(val, "Third") {
+			} else if strings.Contains(val, "Kuartal III") || strings.Contains(val, "Third") || strings.Contains(valLower, "september") || strings.Contains(val, "-09-") {
 				stmt.Period = "Q3"
-			} else {
+			} else if strings.Contains(val, "Tahunan") || strings.Contains(val, "Annual") || strings.Contains(val, "Audit") || strings.Contains(valLower, "desember") || strings.Contains(valLower, "december") || strings.Contains(val, "-12-") {
 				stmt.Period = "FY"
 			}
 		case (strings.Contains(key, "tanggal akhir periode tahun berjalan") || strings.Contains(key, "current period end date") || strings.Contains(key, "tanggal akhir periode")) && !strings.Contains(key, "sebelumnya") && !strings.Contains(key, "prior") && !strings.Contains(key, "lalu"):
 			if t, err := time.Parse("2006-01-02", val); err == nil {
 				stmt.PeriodEndDate = t
 				stmt.Year = t.Year()
+				switch t.Month() {
+				case time.March:
+					if stmt.Period == "" || stmt.Period == "FY" {
+						stmt.Period = "Q1"
+					}
+				case time.June:
+					if stmt.Period == "" || stmt.Period == "FY" {
+						stmt.Period = "Q2"
+					}
+				case time.September:
+					if stmt.Period == "" || stmt.Period == "FY" {
+						stmt.Period = "Q3"
+					}
+				case time.December:
+					stmt.Period = "FY"
+				}
 			}
 		}
 	}
@@ -171,7 +219,7 @@ func parseExcelGeneralInfo(f *excelize.File, stmt *domain.Statement) {
 }
 
 func parseExcelBalanceSheet(f *excelize.File, stmt *domain.Statement) {
-	sheet := findMatchingSheet(f, []string{"1110000", "1210000", "neraca", "balance"})
+	sheet := findMatchingSheet(f, []string{"1110000", "1210000", "4220000", "4210000", "neraca", "balance", "posisi keuangan"})
 	if sheet == "" {
 		return
 	}
@@ -190,7 +238,7 @@ func parseExcelBalanceSheet(f *excelize.File, stmt *domain.Statement) {
 		switch {
 		case (strings.Contains(label, "jumlah aset") || strings.Contains(label, "total assets")) && !strings.Contains(label, "lancar") && !strings.Contains(label, "current"):
 			stmt.Core.TotalAssets = val * stmt.Metadata.RoundingMultiplier
-		case strings.Contains(label, "kas dan setara kas") || strings.Contains(label, "cash and cash equivalents"):
+		case label == "kas" || strings.Contains(label, "kas dan setara kas") || strings.Contains(label, "cash and cash equivalents") || strings.Contains(label, "giro pada bank indonesia"):
 			if stmt.Core.CashAndEquivalents == 0 {
 				stmt.Core.CashAndEquivalents = val * stmt.Metadata.RoundingMultiplier
 			}
@@ -215,7 +263,7 @@ func parseExcelBalanceSheet(f *excelize.File, stmt *domain.Statement) {
 }
 
 func parseExcelIncomeStatement(f *excelize.File, stmt *domain.Statement) {
-	sheet := findMatchingSheet(f, []string{"1311000", "1321000", "rugilaba", "income", "profit"})
+	sheet := findMatchingSheet(f, []string{"1311000", "1321000", "4312000", "4322000", "4311000", "rugilaba", "income", "profit", "laba rugi"})
 	if sheet == "" {
 		return
 	}
@@ -232,19 +280,34 @@ func parseExcelIncomeStatement(f *excelize.File, stmt *domain.Statement) {
 		val := findFirstNumericCell(row)
 
 		switch {
-		case strings.Contains(label, "penjualan dan pendapatan") || strings.Contains(label, "sales and revenue") || strings.Contains(label, "pendapatan bunga"):
+		case strings.Contains(label, "penjualan dan pendapatan") || strings.Contains(label, "sales and revenue") || strings.Contains(label, "pendapatan bunga") || strings.Contains(label, "interest income") || strings.Contains(label, "pendapatan operasional"):
 			if stmt.Core.Revenue == 0 {
 				stmt.Core.Revenue = val * stmt.Metadata.RoundingMultiplier
 			}
-		case strings.Contains(label, "beban pokok penjualan") || strings.Contains(label, "cost of sales and revenue"):
-			stmt.Core.CostOfRevenue = val * stmt.Metadata.RoundingMultiplier
-		case strings.Contains(label, "jumlah laba bruto") || strings.Contains(label, "gross profit"):
-			stmt.Core.GrossProfit = val * stmt.Metadata.RoundingMultiplier
-		case strings.Contains(label, "laba (rugi) usaha") || strings.Contains(label, "operating profit") || strings.Contains(label, "operating income"):
-			stmt.Core.OperatingIncome = val * stmt.Metadata.RoundingMultiplier
+		case strings.Contains(label, "beban pokok penjualan") || strings.Contains(label, "cost of sales and revenue") || strings.Contains(label, "beban bunga") || strings.Contains(label, "interest expense"):
+			if stmt.Core.CostOfRevenue == 0 {
+				stmt.Core.CostOfRevenue = val * stmt.Metadata.RoundingMultiplier
+			}
+		case strings.Contains(label, "jumlah laba bruto") || strings.Contains(label, "gross profit") || strings.Contains(label, "pendapatan bunga bersih") || strings.Contains(label, "net interest income"):
+			if stmt.Core.GrossProfit == 0 {
+				stmt.Core.GrossProfit = val * stmt.Metadata.RoundingMultiplier
+			}
+		case strings.Contains(label, "laba (rugi) usaha") || strings.Contains(label, "operating profit") || strings.Contains(label, "operating income") || strings.Contains(label, "laba operasional"):
+			if stmt.Core.OperatingIncome == 0 {
+				stmt.Core.OperatingIncome = val * stmt.Metadata.RoundingMultiplier
+			}
 		case strings.Contains(label, "beban keuangan") || strings.Contains(label, "finance costs"):
-			stmt.Core.FinanceCosts = val * stmt.Metadata.RoundingMultiplier
-		case strings.Contains(label, "laba (rugi) periode berjalan") || strings.Contains(label, "profit (loss) for the period") || strings.Contains(label, "laba bersih"):
+			if stmt.Core.FinanceCosts == 0 {
+				stmt.Core.FinanceCosts = val * stmt.Metadata.RoundingMultiplier
+			}
+		case strings.Contains(label, "laba (rugi) yang dapat diatribusikan ke entitas induk") || strings.Contains(label, "profit (loss) attributable to parent entity"):
+			if stmt.Core.NetIncomeParent == 0 {
+				stmt.Core.NetIncomeParent = val * stmt.Metadata.RoundingMultiplier
+			}
+			if stmt.Core.NetIncome == 0 {
+				stmt.Core.NetIncome = val * stmt.Metadata.RoundingMultiplier
+			}
+		case strings.Contains(label, "jumlah laba (rugi)") || strings.Contains(label, "total profit (loss)") || strings.Contains(label, "laba (rugi) periode berjalan") || strings.Contains(label, "laba (rugi) tahun berjalan") || strings.Contains(label, "profit (loss) for the period") || strings.Contains(label, "laba bersih"):
 			if stmt.Core.NetIncome == 0 {
 				stmt.Core.NetIncome = val * stmt.Metadata.RoundingMultiplier
 			}
@@ -257,7 +320,7 @@ func parseExcelIncomeStatement(f *excelize.File, stmt *domain.Statement) {
 }
 
 func parseExcelCashFlow(f *excelize.File, stmt *domain.Statement) {
-	sheet := findMatchingSheet(f, []string{"1510000", "cashflow", "arus kas", "cash"})
+	sheet := findMatchingSheet(f, []string{"1510000", "4510000", "4520000", "cashflow", "arus kas", "cash"})
 	if sheet == "" {
 		return
 	}

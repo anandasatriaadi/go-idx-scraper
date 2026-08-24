@@ -119,13 +119,20 @@ func ComputeValuationAndRatios(stmt *Statement, priorStmt *Statement, currentSto
 	}
 
 	shares := c.SharesOutstanding
+	if shares <= 1 && v.NormalizedEPS > 0 && c.NetIncome > 0 {
+		shares = (c.NetIncome * fxRate) / v.NormalizedEPS
+	}
 	if shares <= 0 {
 		shares = 1.0
 	}
 
 	// Normalized per-share values in IDR
-	v.NormalizedEPS = (c.NetIncome * fxRate) / shares
-	v.NormalizedBVPS = (c.TotalEquity * fxRate) / shares
+	if v.NormalizedEPS == 0 && shares > 1 {
+		v.NormalizedEPS = (c.NetIncome * fxRate) / shares
+	}
+	if shares > 1 {
+		v.NormalizedBVPS = (c.TotalEquity * fxRate) / shares
+	}
 
 	// 7. Benjamin Graham Fair Value Formula
 	if v.NormalizedEPS > 0 && v.NormalizedBVPS > 0 {
