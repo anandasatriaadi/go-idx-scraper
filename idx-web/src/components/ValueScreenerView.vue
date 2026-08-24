@@ -5,13 +5,14 @@
       <div>
         <h1 class="screener-title">📊 Value Investing Screener</h1>
         <p class="screener-sub">
-          Filter 900+ IDX companies by Margin of Safety, Return on Invested Capital (ROIC), and Piotroski F-Score
+          Filter 900+ IDX companies by Margin of Safety, Return on Invested Capital (ROIC), Piotroski F-Score & Smart Timing VSA Signals
         </p>
       </div>
 
       <!-- Quick Preset Buttons -->
       <div class="presets-row">
         <span class="preset-label font-mono">Presets:</span>
+        <button class="preset-btn preset-actionable" @click="applyPreset('actionable_buy')">⚡ Actionable Buy (Score ≥ 70 & MOS ≥ 20%)</button>
         <button class="preset-btn" @click="applyPreset('deep_value')">🎯 Deep Value (MOS ≥ 30%)</button>
         <button class="preset-btn" @click="applyPreset('buffett_moat')">🏰 Buffett Moat (ROIC ≥ 15%)</button>
         <button class="preset-btn" @click="applyPreset('piotroski_strong')">⭐ High F-Score (≥ 7)</button>
@@ -47,6 +48,26 @@
           />
           <span class="unit">%</span>
         </div>
+      </div>
+
+      <div class="filter-group">
+        <label>Min Timing Score</label>
+        <select v-model.number="filters.minTimingScore" class="filter-select font-mono" @change="fetchScreener">
+          <option :value="0">All Timing Scores</option>
+          <option :value="50">≥ 50 (Accumulation)</option>
+          <option :value="70">≥ 70 (Actionable Buy)</option>
+          <option :value="80">≥ 80 (Elite Setup)</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label>P/E Valuation Band</label>
+        <select v-model="filters.peBand" class="filter-select font-mono" @change="fetchScreener">
+          <option value="">All P/E Levels</option>
+          <option value="minus1sd">≤ -1σ (Discount)</option>
+          <option value="minus2sd">≤ -2σ (Deep Value)</option>
+          <option value="mean">≤ Mean (Fair / Cheap)</option>
+        </select>
       </div>
 
       <div class="filter-group">
@@ -113,6 +134,7 @@
             <th>Margin of Safety</th>
             <th>ROIC</th>
             <th>F-Score</th>
+            <th>Timing Score</th>
             <th>Net Debt</th>
             <th>Action</th>
           </tr>
@@ -157,6 +179,21 @@
                 {{ s.computed_ratios?.piotroski_f_score || 0 }}/9
               </span>
             </td>
+            <td class="font-mono">
+              <div v-if="s.timing_signal || s.valuation?.timing_signal" class="timing-cell">
+                <span :class="['timing-pill', getTimingClass((s.timing_signal || s.valuation?.timing_signal)?.score || 0)]">
+                  {{ (s.timing_signal || s.valuation?.timing_signal)?.score || 0 }}/100
+                </span>
+                <span v-if="(s.timing_signal || s.valuation?.timing_signal)?.status" class="timing-status-sub">
+                  {{ (s.timing_signal || s.valuation?.timing_signal)?.status }}
+                </span>
+                <div v-if="(s.timing_signal || s.valuation?.timing_signal)?.rsi_bullish_divergence || (s.timing_signal || s.valuation?.timing_signal)?.stopping_volume" class="timing-catalysts-mini">
+                  <span v-if="(s.timing_signal || s.valuation?.timing_signal)?.rsi_bullish_divergence" class="mini-chip mini-div" title="RSI Bullish Divergence">⚡ Div</span>
+                  <span v-if="(s.timing_signal || s.valuation?.timing_signal)?.stopping_volume" class="mini-chip mini-vol" title="VSA Stopping Volume">🛡️ Vol</span>
+                </div>
+              </div>
+              <span v-else class="text-muted">-</span>
+            </td>
             <td class="font-mono net-debt-col">
               {{ formatNetDebt(s.computed_ratios?.net_debt, s.metadata?.currency) }}
             </td>
@@ -192,7 +229,9 @@ const filters = reactive({
   minRoicPct: undefined as number | undefined,
   minFScore: 0,
   maxDe: undefined as number | undefined,
-  sector: ''
+  sector: '',
+  minTimingScore: 0,
+  peBand: ''
 })
 
 const fetchScreener = async () => {
@@ -214,6 +253,12 @@ const fetchScreener = async () => {
     if (filters.sector) {
       params.append('sector', filters.sector)
     }
+    if (filters.minTimingScore > 0) {
+      params.append('min_timing_score', filters.minTimingScore.toString())
+    }
+    if (filters.peBand) {
+      params.append('pe_band', filters.peBand)
+    }
 
     const res = await $fetch<{ statements: XBRLStatement[]; total: number }>(
       `/api/v1/screener/value?${params.toString()}`
@@ -229,7 +274,11 @@ const fetchScreener = async () => {
 
 const applyPreset = (preset: string) => {
   resetFilters()
-  if (preset === 'deep_value') {
+  if (preset === 'actionable_buy') {
+    filters.minTimingScore = 70
+    filters.minMos = 20
+    filters.minFScore = 5
+  } else if (preset === 'deep_value') {
     filters.minMos = 30
     filters.minFScore = 5
   } else if (preset === 'buffett_moat') {
@@ -248,6 +297,8 @@ const resetFilters = () => {
   filters.minFScore = 0
   filters.maxDe = undefined
   filters.sector = ''
+  filters.minTimingScore = 0
+  filters.peBand = ''
 }
 
 const getMosClass = (mos: number) => {
@@ -261,6 +312,12 @@ const getFScoreClass = (score?: number) => {
   if (score >= 7) return 'fscore-high'
   if (score >= 5) return 'fscore-mid'
   return 'fscore-low'
+}
+
+const getTimingClass = (score: number) => {
+  if (score >= 70) return 'timing-strong'
+  if (score >= 50) return 'timing-mid'
+  return 'timing-low'
 }
 
 const formatCurrency = (val: number, cur: string) => {
@@ -339,6 +396,16 @@ onMounted(() => {
   color: #38bdf8;
   border-color: #38bdf8;
 }
+.preset-actionable {
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.08);
+}
+.preset-actionable:hover {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: #10b981;
+  color: #6ee7b7;
+}
 .preset-btn.reset {
   color: var(--text-muted);
 }
@@ -357,7 +424,7 @@ onMounted(() => {
   flex-direction: column;
   gap: 6px;
   flex: 1;
-  min-width: 150px;
+  min-width: 140px;
 }
 .filter-group label {
   font-size: 0.75rem;
@@ -421,6 +488,7 @@ onMounted(() => {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
 }
 .screener-table td {
   padding: 14px 16px;
@@ -502,27 +570,83 @@ onMounted(() => {
 .fscore-high {
   background: rgba(16, 185, 129, 0.2);
   color: #34d399;
+  border: 1px solid #10b981;
 }
 .fscore-mid {
-  background: rgba(245, 158, 11, 0.2);
+  background: rgba(245, 158, 11, 0.15);
   color: #fbbf24;
 }
 .fscore-low {
-  background: rgba(239, 68, 68, 0.2);
-  color: #f87171;
+  background: rgba(100, 116, 139, 0.15);
+  color: var(--text-muted);
+}
+.timing-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.timing-pill {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-block;
+  width: fit-content;
+}
+.timing-strong {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid #10b981;
+}
+.timing-mid {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+.timing-low {
+  background: rgba(100, 116, 139, 0.15);
+  color: var(--text-muted);
+}
+.timing-status-sub {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.timing-catalysts-mini {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.mini-chip {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.mini-div {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+.mini-vol {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
 }
 .net-debt-col {
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   color: var(--text-secondary);
 }
 .btn-inspect {
-  background: #1e293b;
+  background: var(--bg-app);
+  border: 1px solid var(--border-color);
   color: #38bdf8;
-  border: 1px solid #38bdf8;
-  padding: 4px 10px;
+  padding: 5px 10px;
   border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.8rem;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -534,6 +658,5 @@ onMounted(() => {
   text-align: center;
   padding: 60px;
   color: var(--text-muted);
-  font-size: 0.95rem;
 }
 </style>

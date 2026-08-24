@@ -58,6 +58,61 @@
         <div v-else-if="activeModalTab === 'terminal'" class="matrix-layout">
           <!-- LEFT COLUMN: Valuation & Solvency Multiples -->
           <div class="matrix-col">
+            <!-- Smart Timing & VSA Signals Card -->
+            <div v-if="latestTimingSignal" class="metric-card timing-card">
+              <div class="timing-card-header">
+                <h3 class="card-heading timing-heading">⚡ Smart Timing & VSA</h3>
+                <span :class="['timing-score-pill font-mono', getTimingScoreClass(latestTimingSignal.score)]">
+                  {{ latestTimingSignal.score }}/100
+                </span>
+              </div>
+              <div :class="['timing-status-banner font-mono', getTimingBannerClass(latestTimingSignal.score)]">
+                <span class="dot-icon">{{ latestTimingSignal.score >= 70 ? '🟢' : latestTimingSignal.score >= 50 ? '🟡' : '⚪' }}</span>
+                <span class="status-txt">{{ latestTimingSignal.status || 'Timing Watch' }}</span>
+              </div>
+              <div class="data-rows font-mono">
+                <div class="data-row">
+                  <span class="label">RSI (14-Day)</span>
+                  <span class="val">
+                    {{ latestTimingSignal.rsi ? latestTimingSignal.rsi.toFixed(1) : '-' }}
+                    <span v-if="latestTimingSignal.rsi_bullish_divergence" class="badge-bullish-div">BULLISH DIV ⚡</span>
+                  </span>
+                </div>
+                <div class="data-row">
+                  <span class="label">VSA Stopping Volume</span>
+                  <span :class="['val', latestTimingSignal.stopping_volume ? 'text-green font-bold' : '']">
+                    {{ latestTimingSignal.stopping_volume ? 'DETECTED 🛡️' : 'None' }}
+                  </span>
+                </div>
+                <div class="data-row">
+                  <span class="label">Volume Dry-Up (VDU)</span>
+                  <span :class="['val', latestTimingSignal.volume_dry_up ? 'text-amber font-bold' : '']">
+                    {{ latestTimingSignal.vdu ? latestTimingSignal.vdu.toFixed(2) + 'x' : '-' }}
+                    <span v-if="latestTimingSignal.volume_dry_up" class="badge-vdu">DRY-UP 💧</span>
+                  </span>
+                </div>
+                <div class="data-row">
+                  <span class="label">Relative Volume (RVOL)</span>
+                  <span class="val">{{ latestTimingSignal.rvol ? latestTimingSignal.rvol.toFixed(2) + 'x' : '-' }}</span>
+                </div>
+                <div class="data-row">
+                  <span class="label">Close Location Value (CLV)</span>
+                  <span class="val">{{ latestTimingSignal.clv !== undefined ? (latestTimingSignal.clv > 0 ? '+' : '') + latestTimingSignal.clv.toFixed(2) : '-' }}</span>
+                </div>
+                <div v-if="latestTimingSignal.valuation_discount_zone || latestValuationBands" class="data-row">
+                  <span class="label">P/E Discount Zone</span>
+                  <span class="val text-cyan">{{ latestTimingSignal.valuation_discount_zone || getPeZoneDesc }}</span>
+                </div>
+              </div>
+
+              <!-- Catalyst Signals Pills -->
+              <div v-if="latestTimingSignal.signals && latestTimingSignal.signals.length > 0" class="catalyst-chips-row font-mono">
+                <span v-for="(sig, sIdx) in latestTimingSignal.signals" :key="sIdx" class="catalyst-pill">
+                  ✓ {{ sig }}
+                </span>
+              </div>
+            </div>
+
             <!-- Current Valuation Card -->
             <div class="metric-card">
               <h3 class="card-heading">Current Valuation</h3>
@@ -99,6 +154,18 @@
                   <span :class="['val font-mono', (latestStatement?.valuation?.margin_of_safety_pct || 0) > 0 ? 'text-green' : 'text-red']">
                     {{ formatSignedPct(latestStatement?.valuation?.margin_of_safety_pct) }}
                   </span>
+                </div>
+                <div v-if="latestValuationBands?.mean_price_pe" class="data-row">
+                  <span class="label">P/E Mean (Price)</span>
+                  <span class="val font-mono text-cyan">{{ formatIDRPrice(latestValuationBands.mean_price_pe) }} ({{ latestValuationBands.mean_pe.toFixed(1) }}x)</span>
+                </div>
+                <div v-if="latestValuationBands?.minus_1sd_price_pe" class="data-row">
+                  <span class="label">P/E -1σ Entry</span>
+                  <span class="val font-mono text-green">{{ formatIDRPrice(latestValuationBands.minus_1sd_price_pe) }}</span>
+                </div>
+                <div v-if="latestValuationBands?.minus_2sd_price_pe" class="data-row">
+                  <span class="label">P/E -2σ Deep Value</span>
+                  <span class="val font-mono text-green font-bold">{{ formatIDRPrice(latestValuationBands.minus_2sd_price_pe) }}</span>
                 </div>
               </div>
             </div>
@@ -367,6 +434,8 @@
             :ticker="ticker"
             :graham-number="latestStatement?.valuation?.graham_number || 0"
             :current-price="latestStatement?.valuation?.current_price || 0"
+            :valuation-bands="latestValuationBands"
+            :timing-signal="latestTimingSignal"
           />
         </div>
 
@@ -426,6 +495,38 @@ const loadingNews = ref(false)
 const latestStatement = computed(() => {
   if (statements.value.length === 0) return null
   return statements.value[0]
+})
+
+const latestTimingSignal = computed(() => {
+  return latestStatement.value?.timing_signal || latestStatement.value?.valuation?.timing_signal || null
+})
+
+const latestValuationBands = computed(() => {
+  return latestStatement.value?.valuation_bands || latestStatement.value?.valuation?.valuation_bands || null
+})
+
+const getTimingScoreClass = (score?: number) => {
+  if (!score) return 'timing-low'
+  if (score >= 70) return 'timing-high'
+  if (score >= 50) return 'timing-mid'
+  return 'timing-low'
+}
+
+const getTimingBannerClass = (score?: number) => {
+  if (!score) return 'banner-neutral'
+  if (score >= 70) return 'banner-bullish'
+  if (score >= 50) return 'banner-amber'
+  return 'banner-neutral'
+}
+
+const getPeZoneDesc = computed(() => {
+  const vb = latestValuationBands.value
+  const p = latestStatement.value?.valuation?.current_price
+  if (!vb || !p || vb.mean_price_pe <= 0) return '-'
+  if (vb.minus_2sd_price_pe > 0 && p <= vb.minus_2sd_price_pe) return '≤ -2σ (Deep Value)'
+  if (vb.minus_1sd_price_pe > 0 && p <= vb.minus_1sd_price_pe) return '-1σ to -2σ (Accumulation)'
+  if (vb.mean_price_pe > 0 && p <= vb.mean_price_pe) return 'Mean to -1σ (Discount)'
+  return 'Fair / Premium'
 })
 
 const uniqueYears = computed(() => {
@@ -865,6 +966,105 @@ watch(activeModalTab, (tab) => {
   text-align: center;
   padding: 60px;
   color: var(--text-muted);
+}
+
+/* Smart Timing Card & Badges */
+.timing-card {
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  background: rgba(15, 23, 42, 0.7);
+}
+.timing-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.timing-heading {
+  margin-bottom: 0;
+  border-bottom: none;
+  padding-bottom: 0;
+  color: #38bdf8;
+}
+.timing-score-pill {
+  font-size: 0.8rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.timing-high {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid #10b981;
+}
+.timing-mid {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+.timing-low {
+  background: rgba(100, 116, 139, 0.2);
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+}
+.timing-status-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 0.8rem;
+}
+.timing-status-banner.banner-bullish {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #34d399;
+}
+.timing-status-banner.banner-amber {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+}
+.timing-status-banner.banner-neutral {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+.badge-bullish-div {
+  background: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 6px;
+}
+.badge-vdu {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 6px;
+}
+.catalyst-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.06);
+}
+.catalyst-pill {
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  color: #7dd3fc;
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 @media (max-width: 1200px) {
   .matrix-layout {

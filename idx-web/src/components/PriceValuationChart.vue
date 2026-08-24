@@ -4,7 +4,7 @@
     <div class="chart-header-row">
       <div class="header-left">
         <div class="title-with-badge">
-          <h2 class="chart-title">📈 PRICE & GRAHAM VALUATION BANDS</h2>
+          <h2 class="chart-title">📈 PRICE & HISTORICAL VALUATION BANDS</h2>
           <span v-if="ticker" class="ticker-pill">${{ ticker }}</span>
         </div>
         <div class="chart-summary-stats">
@@ -24,6 +24,10 @@
             <span class="stat-lbl">MOS:</span>
             <span class="stat-val">{{ (currentMosPct >= 0 ? '+' : '') + currentMosPct.toFixed(1) }}%</span>
           </span>
+          <span v-if="timingSignal?.score !== undefined" :class="['stat-item timing-stat-item', getTimingScoreClass(timingSignal.score)]">
+            <span class="stat-lbl">TIMING SCORE:</span>
+            <span class="stat-val font-bold">{{ timingSignal.score }}/100</span>
+          </span>
         </div>
       </div>
 
@@ -31,6 +35,22 @@
       <div class="header-controls">
         <!-- Indicator Toggles -->
         <div class="indicator-toggles">
+          <button
+            v-if="hasPeBands"
+            :class="['toggle-btn pe-toggle', { active: showPeBands }]"
+            title="Toggle Historical P/E Standard Deviation Bands (±1σ, ±2σ)"
+            @click="showPeBands = !showPeBands"
+          >
+            <span class="dot pe-dot"></span> P/E Bands
+          </button>
+          <button
+            v-if="hasPbBands"
+            :class="['toggle-btn pb-toggle', { active: showPbBands }]"
+            title="Toggle Historical P/B Standard Deviation Bands (±1σ, ±2σ)"
+            @click="showPbBands = !showPbBands"
+          >
+            <span class="dot pb-dot"></span> P/B Bands
+          </button>
           <button
             :class="['toggle-btn sma50-toggle', { active: showSma50 }]"
             title="Toggle 50-day Simple Moving Average"
@@ -61,6 +81,41 @@
       </div>
     </div>
 
+    <!-- Smart Timing Score Banner -->
+    <div v-if="timingSignal" :class="['smart-timing-banner font-mono', getTimingBannerClass(timingSignal.score)]">
+      <div class="timing-banner-main">
+        <div class="timing-score-badge">
+          <span class="timing-indicator-dot">{{ timingSignal.score >= 70 ? '🟢' : timingSignal.score >= 50 ? '🟡' : '⚪' }}</span>
+          <span class="score-number">{{ timingSignal.score }}/100</span>
+          <span class="timing-status-label">{{ timingSignal.status || 'Timing Signal' }}</span>
+        </div>
+        <div class="timing-catalysts-list">
+          <span v-if="timingSignal.rsi !== undefined" class="catalyst-chip" :class="{ 'chip-bullish': timingSignal.rsi < 35 || timingSignal.rsi_bullish_divergence }">
+            RSI(14): {{ timingSignal.rsi.toFixed(1) }}
+            <strong v-if="timingSignal.rsi_bullish_divergence" class="chip-alert">⚡ Bullish Div</strong>
+          </span>
+          <span v-if="timingSignal.stopping_volume" class="catalyst-chip chip-bullish">
+            🛡️ VSA Stopping Volume
+          </span>
+          <span v-if="timingSignal.volume_dry_up" class="catalyst-chip chip-amber">
+            💧 Volume Dry-Up (VDU: {{ timingSignal.vdu?.toFixed(2) || '0.00' }}x)
+          </span>
+          <span v-if="timingSignal.rvol !== undefined && timingSignal.rvol > 0" class="catalyst-chip">
+            RVOL: {{ timingSignal.rvol.toFixed(2) }}x
+          </span>
+          <span v-if="timingSignal.clv !== undefined" class="catalyst-chip">
+            CLV: {{ (timingSignal.clv > 0 ? '+' : '') + timingSignal.clv.toFixed(2) }}
+          </span>
+          <span v-if="timingSignal.valuation_discount_zone" class="catalyst-chip chip-emerald">
+            Zone: {{ timingSignal.valuation_discount_zone }}
+          </span>
+          <span v-for="(sig, sIdx) in (timingSignal.signals || [])" :key="sIdx" class="catalyst-chip chip-extra">
+            {{ sig }}
+          </span>
+        </div>
+      </div>
+    </div>
+
     <!-- Chart Legend & Guide -->
     <div class="chart-legend">
       <div class="legend-item">
@@ -72,6 +127,30 @@
       <div v-if="grahamNumber && grahamNumber > 0" class="legend-item">
         <span class="legend-box mos-box"></span> 30% MoS Zone (≤ Rp {{ formatNum(grahamNumber * 0.7) }})
       </div>
+
+      <!-- P/E Valuation Bands Legend -->
+      <template v-if="showPeBands && valuationBands">
+        <div class="legend-item">
+          <span class="legend-line pe-mean-line"></span> P/E Mean (Rp {{ formatNum(valuationBands.mean_price_pe) }})
+        </div>
+        <div class="legend-item">
+          <span class="legend-line pe-plus-line"></span> P/E +1σ / +2σ
+        </div>
+        <div class="legend-item">
+          <span class="legend-box pe-accum-box"></span> P/E Accumulation Zone (-1σ to -2σ)
+        </div>
+      </template>
+
+      <!-- P/B Valuation Bands Legend -->
+      <template v-if="showPbBands && valuationBands">
+        <div class="legend-item">
+          <span class="legend-line pb-mean-line"></span> P/B Mean (Rp {{ formatNum(valuationBands.mean_price_pb) }})
+        </div>
+        <div class="legend-item">
+          <span class="legend-box pb-accum-box"></span> P/B Accumulation Zone (-1σ to -2σ)
+        </div>
+      </template>
+
       <div v-if="showSma50" class="legend-item">
         <span class="legend-line sma50-line"></span> SMA 50
       </div>
@@ -116,6 +195,18 @@
           <linearGradient id="mosGradient" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stop-color="#10b981" stop-opacity="0.18" />
             <stop offset="100%" stop-color="#10b981" stop-opacity="0.06" />
+          </linearGradient>
+
+          <!-- P/E Accumulation Band Gradient (-1SD to -2SD) -->
+          <linearGradient id="peAccumGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#34d399" stop-opacity="0.22" />
+            <stop offset="100%" stop-color="#10b981" stop-opacity="0.10" />
+          </linearGradient>
+
+          <!-- P/B Accumulation Band Gradient (-1SD to -2SD) -->
+          <linearGradient id="pbAccumGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.20" />
+            <stop offset="100%" stop-color="#2563eb" stop-opacity="0.08" />
           </linearGradient>
 
           <!-- Glow Filter for Active Dot -->
@@ -232,7 +323,224 @@
           </text>
         </g>
 
-        <!-- 4. SMA 200 Curve -->
+        <!-- 4. P/E Standard Deviation Bands Overlay -->
+        <g v-if="showPeBands && valuationBands && peBandCoords" class="pe-bands-group">
+          <!-- P/E Accumulation Shaded Band between -1SD and -2SD -->
+          <rect
+            v-if="peBandCoords.minus1sdY !== null && peBandCoords.minus2sdY !== null"
+            :x="padding.left"
+            :y="Math.min(peBandCoords.minus1sdY, peBandCoords.minus2sdY)"
+            :width="plotWidth"
+            :height="Math.abs(peBandCoords.minus2sdY - peBandCoords.minus1sdY)"
+            fill="url(#peAccumGradient)"
+          />
+
+          <!-- +2 SD P/E Line -->
+          <g v-if="peBandCoords.plus2sdY !== null">
+            <line
+              :x1="padding.left"
+              :y1="peBandCoords.plus2sdY"
+              :x2="padding.left + plotWidth"
+              :y2="peBandCoords.plus2sdY"
+              stroke="#f87171"
+              stroke-dasharray="4 4"
+              stroke-width="1.2"
+              stroke-opacity="0.8"
+            />
+            <text
+              :x="padding.left + plotWidth - 8"
+              :y="peBandCoords.plus2sdY - 4"
+              fill="#f87171"
+              font-size="8.5"
+              font-weight="600"
+              font-family="var(--font-mono)"
+              text-anchor="end"
+            >
+              +2σ P/E (Rp {{ formatNum(valuationBands.plus_2sd_price_pe) }} | {{ valuationBands.plus_2sd_pe.toFixed(1) }}x)
+            </text>
+          </g>
+
+          <!-- +1 SD P/E Line -->
+          <g v-if="peBandCoords.plus1sdY !== null">
+            <line
+              :x1="padding.left"
+              :y1="peBandCoords.plus1sdY"
+              :x2="padding.left + plotWidth"
+              :y2="peBandCoords.plus1sdY"
+              stroke="#fbbf24"
+              stroke-dasharray="4 4"
+              stroke-width="1.2"
+              stroke-opacity="0.8"
+            />
+            <text
+              :x="padding.left + plotWidth - 8"
+              :y="peBandCoords.plus1sdY - 4"
+              fill="#fbbf24"
+              font-size="8.5"
+              font-weight="600"
+              font-family="var(--font-mono)"
+              text-anchor="end"
+            >
+              +1σ P/E (Rp {{ formatNum(valuationBands.plus_1sd_price_pe) }} | {{ valuationBands.plus_1sd_pe.toFixed(1) }}x)
+            </text>
+          </g>
+
+          <!-- Mean P/E Line -->
+          <g v-if="peBandCoords.meanY !== null">
+            <line
+              :x1="padding.left"
+              :y1="peBandCoords.meanY"
+              :x2="padding.left + plotWidth"
+              :y2="peBandCoords.meanY"
+              stroke="#38bdf8"
+              stroke-dasharray="6 3"
+              stroke-width="1.5"
+              stroke-opacity="0.9"
+            />
+            <text
+              :x="padding.left + plotWidth - 8"
+              :y="peBandCoords.meanY - 4"
+              fill="#38bdf8"
+              font-size="8.5"
+              font-weight="700"
+              font-family="var(--font-mono)"
+              text-anchor="end"
+            >
+              Mean P/E (Rp {{ formatNum(valuationBands.mean_price_pe) }} | {{ valuationBands.mean_pe.toFixed(1) }}x)
+            </text>
+          </g>
+
+          <!-- -1 SD P/E Line -->
+          <g v-if="peBandCoords.minus1sdY !== null">
+            <line
+              :x1="padding.left"
+              :y1="peBandCoords.minus1sdY"
+              :x2="padding.left + plotWidth"
+              :y2="peBandCoords.minus1sdY"
+              stroke="#34d399"
+              stroke-dasharray="3 3"
+              stroke-width="1.4"
+              stroke-opacity="0.85"
+            />
+            <text
+              :x="padding.left + plotWidth - 8"
+              :y="peBandCoords.minus1sdY - 4"
+              fill="#34d399"
+              font-size="8.5"
+              font-weight="600"
+              font-family="var(--font-mono)"
+              text-anchor="end"
+            >
+              -1σ P/E (Rp {{ formatNum(valuationBands.minus_1sd_price_pe) }} | {{ valuationBands.minus_1sd_pe.toFixed(1) }}x)
+            </text>
+          </g>
+
+          <!-- -2 SD P/E Line -->
+          <g v-if="peBandCoords.minus2sdY !== null">
+            <line
+              :x1="padding.left"
+              :y1="peBandCoords.minus2sdY"
+              :x2="padding.left + plotWidth"
+              :y2="peBandCoords.minus2sdY"
+              stroke="#10b981"
+              stroke-width="1.8"
+            />
+            <text
+              :x="padding.left + plotWidth - 8"
+              :y="peBandCoords.minus2sdY - 4"
+              fill="#10b981"
+              font-size="8.5"
+              font-weight="700"
+              font-family="var(--font-mono)"
+              text-anchor="end"
+            >
+              -2σ P/E Accumulation (Rp {{ formatNum(valuationBands.minus_2sd_price_pe) }} | {{ valuationBands.minus_2sd_pe.toFixed(1) }}x)
+            </text>
+          </g>
+        </g>
+
+        <!-- 5. P/B Standard Deviation Bands Overlay -->
+        <g v-if="showPbBands && valuationBands && pbBandCoords" class="pb-bands-group">
+          <!-- P/B Accumulation Shaded Band between -1SD and -2SD -->
+          <rect
+            v-if="pbBandCoords.minus1sdY !== null && pbBandCoords.minus2sdY !== null"
+            :x="padding.left"
+            :y="Math.min(pbBandCoords.minus1sdY, pbBandCoords.minus2sdY)"
+            :width="plotWidth"
+            :height="Math.abs(pbBandCoords.minus2sdY - pbBandCoords.minus1sdY)"
+            fill="url(#pbAccumGradient)"
+          />
+
+          <!-- Mean P/B Line -->
+          <g v-if="pbBandCoords.meanY !== null">
+            <line
+              :x1="padding.left"
+              :y1="pbBandCoords.meanY"
+              :x2="padding.left + plotWidth"
+              :y2="pbBandCoords.meanY"
+              stroke="#60a5fa"
+              stroke-dasharray="5 3"
+              stroke-width="1.3"
+              stroke-opacity="0.8"
+            />
+            <text
+              :x="padding.left + 8"
+              :y="pbBandCoords.meanY - 4"
+              fill="#60a5fa"
+              font-size="8.5"
+              font-weight="600"
+              font-family="var(--font-mono)"
+            >
+              Mean P/B (Rp {{ formatNum(valuationBands.mean_price_pb) }} | {{ valuationBands.mean_pb.toFixed(2) }}x)
+            </text>
+          </g>
+
+          <!-- -1 SD P/B Line -->
+          <g v-if="pbBandCoords.minus1sdY !== null">
+            <line
+              :x1="padding.left"
+              :y1="pbBandCoords.minus1sdY"
+              :x2="padding.left + plotWidth"
+              :y2="pbBandCoords.minus1sdY"
+              stroke="#38bdf8"
+              stroke-dasharray="3 3"
+              stroke-width="1.2"
+            />
+            <text
+              :x="padding.left + 8"
+              :y="pbBandCoords.minus1sdY - 4"
+              fill="#38bdf8"
+              font-size="8.5"
+              font-family="var(--font-mono)"
+            >
+              -1σ P/B (Rp {{ formatNum(valuationBands.minus_1sd_price_pb) }})
+            </text>
+          </g>
+
+          <!-- -2 SD P/B Line -->
+          <g v-if="pbBandCoords.minus2sdY !== null">
+            <line
+              :x1="padding.left"
+              :y1="pbBandCoords.minus2sdY"
+              :x2="padding.left + plotWidth"
+              :y2="pbBandCoords.minus2sdY"
+              stroke="#0284c7"
+              stroke-width="1.6"
+            />
+            <text
+              :x="padding.left + 8"
+              :y="pbBandCoords.minus2sdY - 4"
+              fill="#0284c7"
+              font-size="8.5"
+              font-weight="700"
+              font-family="var(--font-mono)"
+            >
+              -2σ P/B (Rp {{ formatNum(valuationBands.minus_2sd_price_pb) }})
+            </text>
+          </g>
+        </g>
+
+        <!-- 6. SMA 200 Curve -->
         <path
           v-if="showSma200 && sma200Path"
           :d="sma200Path"
@@ -244,7 +552,7 @@
           opacity="0.85"
         />
 
-        <!-- 5. SMA 50 Curve -->
+        <!-- 7. SMA 50 Curve -->
         <path
           v-if="showSma50 && sma50Path"
           :d="sma50Path"
@@ -256,7 +564,7 @@
           opacity="0.9"
         />
 
-        <!-- 6. Stock Price Area & Curve -->
+        <!-- 8. Stock Price Area & Curve -->
         <path
           v-if="priceAreaPath"
           :d="priceAreaPath"
@@ -272,7 +580,7 @@
           stroke-linejoin="round"
         />
 
-        <!-- 7. Interactive Crosshair & Highlight Dot -->
+        <!-- 9. Interactive Crosshair & Highlight Dot -->
         <g v-if="hoveredIndex !== null && hoveredPoint" class="crosshair-group">
           <!-- Vertical Crosshair Line -->
           <line
@@ -360,6 +668,14 @@
             </span>
           </div>
 
+          <!-- P/E Band Position in Tooltip -->
+          <div v-if="valuationBands && valuationBands.minus_2sd_price_pe > 0" class="tooltip-row val-row pe-band-tooltip-row">
+            <span class="lbl">P/E Band Zone:</span>
+            <span :class="['val font-bold', getPeZoneClass(hoveredPoint.close)]">
+              {{ getPeZoneLabel(hoveredPoint.close) }}
+            </span>
+          </div>
+
           <div v-if="showSma50 && hoveredSma50 !== null" class="tooltip-row sma-row">
             <span class="lbl sma50-text">SMA 50:</span>
             <span class="val">Rp {{ formatNum(hoveredSma50) }}</span>
@@ -375,13 +691,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
-import type { PriceCandle, StockPriceResponse } from '../server/utils/types'
+import { ref, computed, watch } from 'vue'
+import type { PriceCandle, StockPriceResponse, ValuationBands, TimingSignal } from '../server/utils/types'
 
 const props = defineProps<{
   ticker: string | null
   grahamNumber?: number | null
   currentPrice?: number | null
+  valuationBands?: ValuationBands | null
+  timingSignal?: TimingSignal | null
 }>()
 
 const selectedRange = ref<string>('1y')
@@ -390,6 +708,8 @@ const prices = ref<PriceCandle[]>([])
 
 const showSma50 = ref<boolean>(true)
 const showSma200 = ref<boolean>(true)
+const showPeBands = ref<boolean>(true)
+const showPbBands = ref<boolean>(false)
 
 const hoveredIndex = ref<number | null>(null)
 const chartContainerRef = ref<HTMLElement | null>(null)
@@ -403,6 +723,15 @@ const rangeOptions = [
   { id: '5y', label: '5Y' },
   { id: 'max', label: 'MAX' }
 ]
+
+// Availability flags
+const hasPeBands = computed(() => {
+  return !!(props.valuationBands && props.valuationBands.mean_price_pe > 0)
+})
+
+const hasPbBands = computed(() => {
+  return !!(props.valuationBands && props.valuationBands.mean_price_pb > 0)
+})
 
 // SVG Layout Dimensions
 const svgWidth = 800
@@ -493,6 +822,40 @@ const yBounds = computed(() => {
     if (gVal < max * 4 && gVal > min * 0.1) {
       if (gVal > max) max = gVal
       if (mosVal < min) min = mosVal
+    }
+  }
+
+  // Factor in P/E Standard Deviation Bands if active
+  if (showPeBands.value && props.valuationBands) {
+    const vb = props.valuationBands
+    const pePrices = [
+      vb.plus_2sd_price_pe,
+      vb.plus_1sd_price_pe,
+      vb.mean_price_pe,
+      vb.minus_1sd_price_pe,
+      vb.minus_2sd_price_pe
+    ].filter(p => p && p > 0 && p < max * 5 && p > min * 0.1)
+
+    for (const p of pePrices) {
+      if (p < min) min = p
+      if (p > max) max = p
+    }
+  }
+
+  // Factor in P/B Standard Deviation Bands if active
+  if (showPbBands.value && props.valuationBands) {
+    const vb = props.valuationBands
+    const pbPrices = [
+      vb.plus_2sd_price_pb,
+      vb.plus_1sd_price_pb,
+      vb.mean_price_pb,
+      vb.minus_1sd_price_pb,
+      vb.minus_2sd_price_pb
+    ].filter(p => p && p > 0 && p < max * 5 && p > min * 0.1)
+
+    for (const p of pbPrices) {
+      if (p < min) min = p
+      if (p > max) max = p
     }
   }
 
@@ -597,6 +960,32 @@ const mosY = computed(() => {
   return getY(props.grahamNumber * 0.70)
 })
 
+// P/E Valuation Band Y Coordinates
+const peBandCoords = computed(() => {
+  if (!props.valuationBands) return null
+  const vb = props.valuationBands
+  return {
+    plus2sdY: vb.plus_2sd_price_pe > 0 ? getY(vb.plus_2sd_price_pe) : null,
+    plus1sdY: vb.plus_1sd_price_pe > 0 ? getY(vb.plus_1sd_price_pe) : null,
+    meanY: vb.mean_price_pe > 0 ? getY(vb.mean_price_pe) : null,
+    minus1sdY: vb.minus_1sd_price_pe > 0 ? getY(vb.minus_1sd_price_pe) : null,
+    minus2sdY: vb.minus_2sd_price_pe > 0 ? getY(vb.minus_2sd_price_pe) : null
+  }
+})
+
+// P/B Valuation Band Y Coordinates
+const pbBandCoords = computed(() => {
+  if (!props.valuationBands) return null
+  const vb = props.valuationBands
+  return {
+    plus2sdY: vb.plus_2sd_price_pb > 0 ? getY(vb.plus_2sd_price_pb) : null,
+    plus1sdY: vb.plus_1sd_price_pb > 0 ? getY(vb.plus_1sd_price_pb) : null,
+    meanY: vb.mean_price_pb > 0 ? getY(vb.mean_price_pb) : null,
+    minus1sdY: vb.minus_1sd_price_pb > 0 ? getY(vb.minus_1sd_price_pb) : null,
+    minus2sdY: vb.minus_2sd_price_pb > 0 ? getY(vb.minus_2sd_price_pb) : null
+  }
+})
+
 // Grid Lines & Ticks
 const yGridLines = computed(() => {
   const { min, max } = yBounds.value
@@ -653,6 +1042,40 @@ const currentMosPct = computed(() => {
   const close = latestPrice.value.close
   return ((props.grahamNumber - close) / props.grahamNumber) * 100
 })
+
+// Timing Helpers
+const getTimingScoreClass = (score: number) => {
+  if (score >= 70) return 'text-green'
+  if (score >= 50) return 'text-amber'
+  return 'text-muted'
+}
+
+const getTimingBannerClass = (score: number) => {
+  if (score >= 70) return 'banner-actionable'
+  if (score >= 50) return 'banner-accumulation'
+  return 'banner-neutral'
+}
+
+const getPeZoneClass = (price: number) => {
+  if (!props.valuationBands) return ''
+  const vb = props.valuationBands
+  if (vb.minus_2sd_price_pe > 0 && price <= vb.minus_2sd_price_pe) return 'text-green'
+  if (vb.minus_1sd_price_pe > 0 && price <= vb.minus_1sd_price_pe) return 'text-green'
+  if (vb.mean_price_pe > 0 && price <= vb.mean_price_pe) return 'text-cyan'
+  if (vb.plus_1sd_price_pe > 0 && price <= vb.plus_1sd_price_pe) return 'text-amber'
+  return 'text-red'
+}
+
+const getPeZoneLabel = (price: number) => {
+  if (!props.valuationBands) return '-'
+  const vb = props.valuationBands
+  if (vb.minus_2sd_price_pe > 0 && price <= vb.minus_2sd_price_pe) return '≤ -2σ (Deep Value)'
+  if (vb.minus_1sd_price_pe > 0 && price <= vb.minus_1sd_price_pe) return '-1σ to -2σ (Accumulation)'
+  if (vb.mean_price_pe > 0 && price <= vb.mean_price_pe) return 'Mean to -1σ (Discount)'
+  if (vb.plus_1sd_price_pe > 0 && price <= vb.plus_1sd_price_pe) return 'Mean to +1σ (Fair/High)'
+  if (vb.plus_2sd_price_pe > 0 && price <= vb.plus_2sd_price_pe) return '+1σ to +2σ (Premium)'
+  return '> +2σ (Overextended)'
+}
 
 // Hover / Crosshair Interactions
 const hoveredPoint = computed(() => {
@@ -828,6 +1251,7 @@ const formatFullDate = (d?: string | Date) => {
   gap: 14px;
   flex-wrap: wrap;
   font-size: 0.78rem;
+  align-items: center;
 }
 
 .stat-item {
@@ -845,6 +1269,13 @@ const formatFullDate = (d?: string | Date) => {
   font-weight: 700;
 }
 
+.timing-stat-item {
+  background: rgba(255, 255, 255, 0.04);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+}
+
 .header-controls {
   display: flex;
   align-items: center;
@@ -855,6 +1286,7 @@ const formatFullDate = (d?: string | Date) => {
 .indicator-toggles {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .toggle-btn {
@@ -893,6 +1325,8 @@ const formatFullDate = (d?: string | Date) => {
   opacity: 1;
 }
 
+.pe-dot { background: #34d399; }
+.pb-dot { background: #38bdf8; }
 .sma50-dot { background: #fbbf24; }
 .sma200-dot { background: #c084fc; }
 
@@ -926,9 +1360,116 @@ const formatFullDate = (d?: string | Date) => {
   color: #fff;
 }
 
+/* Smart Timing Banner */
+.smart-timing-banner {
+  border-radius: 8px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.banner-actionable {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.1);
+}
+
+.banner-accumulation {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.1);
+}
+
+.banner-neutral {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+}
+
+.timing-banner-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.timing-score-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timing-indicator-dot {
+  font-size: 0.85rem;
+}
+
+.score-number {
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: #f8fafc;
+}
+
+.timing-status-label {
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: #38bdf8;
+  letter-spacing: 0.02em;
+}
+
+.timing-catalysts-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.catalyst-chip {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chip-bullish {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #34d399;
+}
+
+.chip-amber {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+}
+
+.chip-emerald {
+  background: rgba(52, 211, 153, 0.12);
+  border-color: rgba(52, 211, 153, 0.35);
+  color: #6ee7b7;
+}
+
+.chip-extra {
+  background: rgba(56, 189, 248, 0.1);
+  border-color: rgba(56, 189, 248, 0.3);
+  color: #7dd3fc;
+}
+
+.chip-alert {
+  color: #fef08a;
+  font-weight: 800;
+}
+
+/* Legend */
 .chart-legend {
   display: flex;
-  gap: 16px;
+  gap: 14px;
   flex-wrap: wrap;
   font-size: 0.72rem;
   color: var(--text-secondary);
@@ -954,6 +1495,18 @@ const formatFullDate = (d?: string | Date) => {
   background: #10b981;
   border-top: 1px dashed #10b981;
 }
+.pe-mean-line {
+  background: #38bdf8;
+  border-top: 1px dashed #38bdf8;
+}
+.pe-plus-line {
+  background: #fbbf24;
+  border-top: 1px dashed #f87171;
+}
+.pb-mean-line {
+  background: #60a5fa;
+  border-top: 1px dashed #60a5fa;
+}
 .sma50-line { background: #fbbf24; }
 .sma200-line { background: #c084fc; }
 
@@ -963,6 +1516,24 @@ const formatFullDate = (d?: string | Date) => {
   height: 10px;
   background: rgba(16, 185, 129, 0.25);
   border: 1px solid #10b981;
+  border-radius: 2px;
+}
+
+.legend-box.pe-accum-box {
+  display: inline-block;
+  width: 12px;
+  height: 10px;
+  background: rgba(52, 211, 153, 0.25);
+  border: 1px solid #34d399;
+  border-radius: 2px;
+}
+
+.legend-box.pb-accum-box {
+  display: inline-block;
+  width: 12px;
+  height: 10px;
+  background: rgba(56, 189, 248, 0.22);
+  border: 1px solid #38bdf8;
   border-radius: 2px;
 }
 
@@ -1013,7 +1584,7 @@ const formatFullDate = (d?: string | Date) => {
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
   padding: 10px 14px;
-  width: 260px;
+  width: 270px;
   pointer-events: none;
   z-index: 20;
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.6);
@@ -1089,6 +1660,12 @@ const formatFullDate = (d?: string | Date) => {
   margin-top: 2px;
 }
 
+.pe-band-tooltip-row {
+  background: rgba(56, 189, 248, 0.04);
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
 .sub-lbl {
   font-size: 0.65rem;
   opacity: 0.85;
@@ -1111,6 +1688,10 @@ const formatFullDate = (d?: string | Date) => {
   .header-controls {
     width: 100%;
     justify-content: space-between;
+  }
+  .timing-banner-main {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 </style>
