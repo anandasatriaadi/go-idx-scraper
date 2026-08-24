@@ -175,6 +175,17 @@ func run() error {
 				}
 
 				ps, modePeriod := finreport.NormalizePeriod(period)
+
+				// Skip periods not yet released on IDX for current calendar year
+				if !finreport.IsPeriodReleasedOnIDX(year, period, time.Now()) {
+					logger.Debug("Period not yet released for current calendar year, skipping",
+						zap.String("ticker", cleanTicker),
+						zap.Int("year", year),
+						zap.String("period", ps),
+					)
+					continue
+				}
+
 				xlsxName := fmt.Sprintf("FinancialStatement-%d-%s-%s.xlsx", year, ps, cleanTicker)
 				instanceZipName := fmt.Sprintf("FinancialStatement-%d-%s-%s-instance.zip", year, modePeriod, cleanTicker)
 				inlineZipName := fmt.Sprintf("FinancialStatement-%d-%s-%s-inlineXBRL.zip", year, modePeriod, cleanTicker)

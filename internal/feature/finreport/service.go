@@ -92,6 +92,54 @@ func (s *Service) ConstructXBRLReportURL(year int, periodString, issuerCode stri
 	return url
 }
 
+// IsPeriodReleasedOnIDX checks if the reporting period's filing window has opened on IDX based on the current date
+func IsPeriodReleasedOnIDX(year int, period string, now time.Time) bool {
+	currentYear := now.Year()
+	currentMonth := now.Month()
+
+	// Past fiscal years are always eligible
+	if year < currentYear {
+		return true
+	}
+
+	// Future fiscal years are never eligible
+	if year > currentYear {
+		return false
+	}
+
+	// For the CURRENT fiscal year:
+	ps, modePeriod := NormalizePeriod(period)
+	pUpper := strings.ToUpper(ps)
+	mUpper := strings.ToUpper(modePeriod)
+
+	// FY / Audit / Tahunan for current year Y is only released in year Y+1 (March/April onwards)
+	if pUpper == "TAHUNAN" || pUpper == "AUDIT" || pUpper == "FY" || mUpper == "AUDIT" || mUpper == "TAHUNAN" {
+		return false
+	}
+
+	// Q1 / TW1 (period ends March 31): Filing window opens in April (Month 4)
+	if pUpper == "I" || mUpper == "TW1" || pUpper == "Q1" {
+		return currentMonth >= time.April
+	}
+
+	// Q2 / TW2 (period ends June 30): Filing window opens in July (Month 7)
+	if pUpper == "II" || mUpper == "TW2" || pUpper == "Q2" {
+		return currentMonth >= time.July
+	}
+
+	// Q3 / TW3 (period ends September 30): Filing window opens in October (Month 10)
+	if pUpper == "III" || mUpper == "TW3" || pUpper == "Q3" {
+		return currentMonth >= time.October
+	}
+
+	// Q4 / TW4
+	if pUpper == "IV" || mUpper == "TW4" || pUpper == "Q4" {
+		return false
+	}
+
+	return true
+}
+
 func romanToNumeral(roman string) string {
 	switch roman {
 	case "I":

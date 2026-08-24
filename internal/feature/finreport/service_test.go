@@ -3,6 +3,7 @@ package finreport
 import (
 	"context"
 	"testing"
+	"time"
 
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.uber.org/zap"
@@ -108,5 +109,39 @@ func TestNormalizePeriod(t *testing.T) {
 			t.Errorf("NormalizePeriod(%q) = (%q, %q), expected (%q, %q)",
 				tt.input, ps, mp, tt.expectedPeriodStr, tt.expectedModePeriod)
 		}
+	}
+}
+
+func TestIsPeriodReleasedOnIDX(t *testing.T) {
+	// Simulate current date = August 25, 2026 (Q2 has ended and window open, Q3 ends Sept 30 so closed, FY Audit closed)
+	august2026 := time.Date(2026, 8, 25, 10, 0, 0, 0, time.UTC)
+
+	// Past years: all periods released
+	if !IsPeriodReleasedOnIDX(2025, "Audit", august2026) {
+		t.Errorf("Expected 2025 Audit to be released in 2026")
+	}
+	if !IsPeriodReleasedOnIDX(2025, "TW3", august2026) {
+		t.Errorf("Expected 2025 TW3 to be released in 2026")
+	}
+
+	// Current year 2026 in August:
+	// Q1 (TW1) -> true
+	if !IsPeriodReleasedOnIDX(2026, "TW1", august2026) {
+		t.Errorf("Expected 2026 TW1 to be released in August")
+	}
+	// Q2 (TW2) -> true
+	if !IsPeriodReleasedOnIDX(2026, "TW2", august2026) {
+		t.Errorf("Expected 2026 TW2 to be released in August")
+	}
+	// Q3 (TW3 - ends Sept 30) -> false in August
+	if IsPeriodReleasedOnIDX(2026, "TW3", august2026) {
+		t.Errorf("Expected 2026 TW3 to NOT be released in August 2026")
+	}
+	// FY / Audit -> false in August of same year
+	if IsPeriodReleasedOnIDX(2026, "Tahunan", august2026) {
+		t.Errorf("Expected 2026 Tahunan to NOT be released in August 2026")
+	}
+	if IsPeriodReleasedOnIDX(2026, "Audit", august2026) {
+		t.Errorf("Expected 2026 Audit to NOT be released in August 2026")
 	}
 }

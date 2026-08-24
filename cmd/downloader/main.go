@@ -199,6 +199,16 @@ func run() error {
 
 				ps, modePeriod := finreport.NormalizePeriod(period)
 
+				// Skip periods not yet released on IDX for current calendar year
+				if !finreport.IsPeriodReleasedOnIDX(year, period, time.Now()) {
+					logger.Debug("Period not yet released on IDX, skipping",
+						zap.String("ticker", stockName),
+						zap.Int("year", year),
+						zap.String("period", ps),
+					)
+					continue
+				}
+
 				xlsxName := fmt.Sprintf("FinancialStatement-%d-%s-%s.xlsx", year, ps, stockName)
 				instanceZipName := fmt.Sprintf("FinancialStatement-%d-%s-%s-instance.zip", year, modePeriod, stockName)
 				inlineZipName := fmt.Sprintf("FinancialStatement-%d-%s-%s-inlineXBRL.zip", year, modePeriod, stockName)
@@ -594,4 +604,43 @@ func parseAndUpsertXBRL(ctx context.Context, filePath string, repo xbrl.Reposito
 func fileExistsAndNotEmpty(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir() && info.Size() > 0
+}
+
+func findExistingFiling(dirs []string, year int, period, ticker string) (bool, string) {
+	cleanTicker := strings.ToUpper(strings.TrimSpace(ticker))
+	ps, modePeriod := finreport.NormalizePeriod(period)
+
+	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			nameUpper := strings.ToUpper(entry.Name())
+			if !strings.Contains(nameUpper, cleanTicker) {
+				continue
+			}
+			if !strings.Contains(nameUpper, fmt.Sprintf("-%d-", year)) && !strings.Contains(nameUpper, fmt.Sprintf("%d", year)) {
+				continue
+			}
+			matchPeriod := strings.Contains(nameUpper, fmt.Sprintf("-%s-", ps)) ||
+				strings.Contains(nameUpper, fmt.Sprintf("-%s-", modePeriod)) ||
+				strings.Contains(nameUpper, fmt.Sprintf("-%s.", ps)) ||
+				strings.Contains(nameUpper, fmt.Sprintf("-%s.", modePeriod)) ||
+				strings.Contains(nameUpper, fmt.Sprintf("-%s-", strings.ToUpper(period)))
+			if matchPeriod {
+				fullPath := filepath.Join(dir, entry.Name())
+				if info, err := os.Stat(fullPath); err == nil && info.Size() > 0 {
+					return true, fullPath
+				}
+			}
+		}
+	}
+	return false, ""
 }
