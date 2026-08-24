@@ -81,20 +81,69 @@ The investment philosophy underpinning this entire architecture is rooted in the
 
 ## 3. Pillar 1: Financial Statement Parser & Automated Valuation Engine
 
-### 3.1 Excel Data Ingestion Architecture
-The Go downloader regularly pulls standardized quarterly and annual financial statements published by IDX into the `./saham/` directory:
-- Naming format: `FinancialStatement-{YEAR}-{PERIOD}-{TICKER}.xlsx` (e.g. `FinancialStatement-2025-III-BBRI.xlsx`).
+### 3.1 IDX XBRL Taxonomy & Financial Ingestion Architecture
+Rather than relying on brittle cell positions or plain spreadsheet formatting, the financial statement parsing engine is directly anchored in the **Official IDX XBRL Taxonomy (2020-01-01)** (`01-idx-taxonomy-2020-01-01.zip`).
 
-IDX financial reports follow a standardized XBRL-derived worksheet layout. The helper `internal/helper/excel.go` already maps sheets to standard identifiers:
-- **`Neraca`** (Balance Sheet / Laporan Posisi Keuangan): Standard sheet code `2100000` / `3100000`.
-- **`RugiLaba`** (Income Statement / Laporan Laba Rugi): Standard sheet code `2200000` / `3200000`.
-- **`CashFlow`** (Cash Flow Statement / Laporan Arus Kas): Standard sheet code `2300000` / `3300000`.
-- **`InfoUmum`** (General Information & Share Count): Standard sheet code `1000000`.
+#### A. Taxonomy Anatomy & Namespace Structure
+The IDX XBRL Taxonomy defines a rigorous semantic standard for all Indonesian listed issuers:
 
-#### Extraction Pipeline:
 ```
-/saham/*.xlsx ──► [Excelize Parser] ──► [Line Item Normalizer] ──► [Metric Calculator] ──► MongoDB `financial_metrics`
+01-idx-taxonomy-2020-01-01/
+├── dic/
+│   ├── fin/
+│   │   ├── idx-cor-2020-01-01.xsd       # Core Financial Schema (monetary items, concepts)
+│   │   ├── idx-cor-LAB-id-2020-01-01.xml# Indonesian standard labels
+│   │   ├── idx-cor-LAB-en-2020-01-01.xml# English standard labels
+│   │   ├── idx-cor-REF-2020-01-01.xml   # PSAK / IFRS accounting standard references
+│   │   └── idx-rt-2020-01-01.xsd        # Role Types & presentation roles
+│   └── dei/
+│       ├── idx-dei-2020-01-01.xsd       # Document and Entity Information
+│       └── idx-dei-LAB-id-2020-01-01.xml# Ticker, Issuer Name, Period metadata
+├── rep/corporateDisclosure/
+│   ├── general/                         # General Industry / Manufacturing / Services
+│   │   ├── idx-general-BS-CAL-1210000.xml # Balance Sheet Calculation Linkbase
+│   │   ├── idx-general-PL-CAL-1311000.xml # Profit & Loss Calculation Linkbase
+│   │   └── idx-general-CF-CAL-1510000.xml # Cash Flow Calculation Linkbase
+│   ├── financing/                       # Conventional Banking & Financial Institutions
+│   ├── financesharia/                   # Sharia Banking
+│   ├── insurance/                       # Insurance Companies
+│   ├── securities/                      # Brokerage & Securities
+│   ├── infrastructure/                  # Utilities, Telecom Towers, Toll Roads
+│   └── property/                        # Real Estate & Property Developers
 ```
+
+#### B. Correspondence Between XBRL Taxonomy & Downloaded `.xlsx` Files
+The downloaded Excel files in `/saham/*.xlsx` are structured direct projections of this XBRL taxonomy:
+- **Sheet `1000000` / `InfoUmum`**: Corresponds to `idx-dei` (EntityTickerSymbol, EntityName, PeriodEndDate, GeneralInformation).
+- **Sheet `1110000` / `1210000` / `Neraca`**: Corresponds to `idx-general-BS-CAL-1210000` (Statement of Financial Position).
+- **Sheet `1311000` / `1321000` / `RugiLaba`**: Corresponds to `idx-general-PL-CAL-1311000` (Statement of Profit or Loss).
+- **Sheet `1410000`**: Corresponds to `idx-general-CE-DEF-1410000` (Statement of Changes in Equity).
+- **Sheet `1510000` / `CashFlow`**: Corresponds to `idx-general-CF-CAL-1510000` (Statement of Cash Flows).
+- **Sheets `1611000` to `1697000`**: Granular Breakdown Notes (PPE, Right-of-Use Assets, Revenue Breakdown, Bank Loans, Bonds).
+
+#### C. Deterministic XBRL Concept Tag Mappings
+The parser targets exact taxonomy tags (`idx-cor:`) across industry entry points:
+
+| Concept / Metric | IDX XBRL Element ID (`idx-cor:`) | Primary Sheet | Balance | Period Type |
+| :--- | :--- | :--- | :--- | :--- |
+| **Total Assets** | `Assets` | `1110000` / `1210000` | Debit | Instant |
+| **Cash & Equivalents** | `CashAndCashEquivalents` | `1110000` / `1210000` | Debit | Instant |
+| **Current Assets** | `CurrentAssets` | `1110000` / `1210000` | Debit | Instant |
+| **Total Liabilities** | `Liabilities` | `1110000` / `1210000` | Credit | Instant |
+| **Current Liabilities** | `CurrentLiabilities` | `1110000` / `1210000` | Credit | Instant |
+| **Short-term Bank Debt** | `ShortTermBankLoans` | `1110000` / `1693000` | Credit | Instant |
+| **Long-term Bank Debt** | `LongTermBankLoans` | `1110000` / `1691000` | Credit | Instant |
+| **Total Equity** | `Equity` / `TotalEquity` | `1110000` / `1410000` | Credit | Instant |
+| **Retained Earnings** | `RetainedEarningsUnappropriated` | `1110000` / `1410000` | Credit | Instant |
+| **Revenue / Sales** | `SalesAndRevenue` / `Revenues` | `1311000` / `1321000` | Credit | Duration |
+| **Cost of Goods Sold** | `CostOfSalesAndRevenue` | `1311000` / `1670000` | Debit | Duration |
+| **Gross Profit** | `GrossProfit` | `1311000` | Credit | Duration |
+| **Operating Profit (EBIT)** | `OperatingIncomeExpense` | `1311000` | Credit | Duration |
+| **Finance Costs (Interest)** | `FinanceCosts` | `1311000` | Debit | Duration |
+| **Net Income** | `ProfitLoss` / `ProfitLossAttributableToOwnersOfParentEntity` | `1311000` | Credit | Duration |
+| **Operating Cash Flow (CFO)**| `NetCashFlowsFromUsedInOperatingActivities` | `1510000` | Debit | Duration |
+| **Capital Expenditures (CapEx)**| `PaymentsForPropertyPlantEquipment` | `1510000` / `1611000`| Credit | Duration |
+| **Shares Outstanding** | `WeightedAverageShares` / `NumberOfIssuedAndFullyPaidShares` | `1000000` / `1311000` | - | Instant |
 
 ---
 
