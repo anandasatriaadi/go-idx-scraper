@@ -2155,34 +2155,51 @@ watch(activeModalTab, (tab) => {
     fetchSectorNews()
   }
 })
+
+onMounted(() => {
+  if (typeof document !== 'undefined') {
+    document.body.style.overflow = 'hidden'
+  }
+})
+
+onUnmounted(() => {
+  if (typeof document !== 'undefined') {
+    document.body.style.overflow = ''
+  }
+})
 </script>
 
 <style scoped>
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(6px);
+  background: rgba(3, 7, 18, 0.92);
+  backdrop-filter: blur(10px);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   z-index: 100;
-  padding: 20px;
+  padding: 24px 16px;
+  overflow-y: auto;
 }
 .modal-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
+  background: #090e17;
+  border: 1px solid #1e293b;
   border-radius: 12px;
   width: 100%;
-  max-width: 1400px;
-  max-height: 94vh;
+  max-width: 1440px;
+  min-height: auto;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.95);
+  margin: auto;
 }
 .modal-header {
-  padding: 16px 24px;
-  border-bottom: 1px solid var(--border-color);
+  padding: 20px 28px;
+  border-bottom: 1px solid #1e293b;
+  background: #0d1424;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -2190,76 +2207,90 @@ watch(activeModalTab, (tab) => {
 .title-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 .ticker-badge {
   background: #2563eb;
   color: #fff;
   font-weight: 800;
-  font-size: 0.95rem;
-  padding: 3px 8px;
-  border-radius: 4px;
+  font-size: 1rem;
+  padding: 4px 10px;
+  border-radius: 6px;
 }
 .company-name {
-  font-size: 1.35rem;
+  font-size: 1.4rem;
   font-weight: 700;
+  color: #f8fafc;
 }
 .meta-tags {
   display: flex;
-  gap: 8px;
-  margin-top: 6px;
+  gap: 10px;
+  margin-top: 8px;
   flex-wrap: wrap;
 }
 .tag {
-  background: var(--bg-app);
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
+  background: #090e17;
+  border: 1px solid #1e293b;
+  color: #94a3b8;
   font-size: 0.75rem;
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: 4px;
 }
 .sector-tag {
   color: #38bdf8;
-  border-color: rgba(56, 189, 248, 0.3);
+  border-color: rgba(56, 189, 248, 0.4);
 }
 .btn-close {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 1.25rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  color: #94a3b8;
+  font-size: 1.1rem;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 .btn-close:hover {
-  color: #fff;
+  color: #f8fafc;
+  background: #ef4444;
+  border-color: #ef4444;
 }
 .modal-tab-bar {
   display: flex;
-  background: var(--bg-app);
-  padding: 6px 24px;
-  gap: 8px;
-  border-bottom: 1px solid var(--border-color);
+  background: #0a101d;
+  padding: 10px 28px;
+  gap: 10px;
+  border-bottom: 1px solid #1e293b;
+  flex-wrap: wrap;
 }
 .modal-tab-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  padding: 6px 14px;
-  font-size: 0.85rem;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  color: #94a3b8;
+  padding: 8px 16px;
+  font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
   border-radius: 6px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  transition: all 0.15s ease;
 }
 .modal-tab-btn:hover {
-  color: #fff;
-  background: var(--bg-card-hover);
+  color: #f8fafc;
+  border-color: #38bdf8;
+  background: #1e293b;
 }
 .modal-tab-btn.active {
-  background: var(--bg-card);
+  background: #1e293b;
   color: #38bdf8;
-  border: 1px solid var(--border-color);
+  border-color: #38bdf8;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.2);
 }
 .tab-badge {
   background: #1e293b;

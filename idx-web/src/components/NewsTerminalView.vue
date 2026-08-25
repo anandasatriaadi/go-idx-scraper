@@ -302,8 +302,6 @@ const formatDate = (d?: string | Date) => {
 }
 
 onMounted(() => {
-  if (props.initialTicker) {
-    fetchNews(1)
-  }
+  fetchNews(1)
 })
 </script>
