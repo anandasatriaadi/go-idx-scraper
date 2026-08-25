@@ -438,6 +438,48 @@
                     ROE (%)
                   </button>
                   <button
+                    :class="['m-tab', { active: matrixMetric === 'net_income' }]"
+                    @click="matrixMetric = 'net_income'"
+                  >
+                    Net Income
+                  </button>
+                  <button
+                    :class="['m-tab', { active: matrixMetric === 'revenue' }]"
+                    @click="matrixMetric = 'revenue'"
+                  >
+                    Revenue
+                  </button>
+                  <button
+                    :class="['m-tab', { active: matrixMetric === 'fcf' }]"
+                    @click="matrixMetric = 'fcf'"
+                  >
+                    Free Cash Flow
+                  </button>
+                  <button
+                    :class="['m-tab', { active: matrixMetric === 'cfo' }]"
+                    @click="matrixMetric = 'cfo'"
+                  >
+                    CFO
+                  </button>
+                  <button
+                    :class="['m-tab', { active: matrixMetric === 'dividends' }]"
+                    @click="matrixMetric = 'dividends'"
+                  >
+                    Dividends Paid
+                  </button>
+                  <button
+                    :class="['m-tab', { active: matrixMetric === 'roic' }]"
+                    @click="matrixMetric = 'roic'"
+                  >
+                    ROIC (%)
+                  </button>
+                  <button
+                    :class="['m-tab', { active: matrixMetric === 'roe' }]"
+                    @click="matrixMetric = 'roe'"
+                  >
+                    ROE (%)
+                  </button>
+                  <button
                     :class="['m-tab', { active: matrixMetric === 'op_margin' }]"
                     @click="matrixMetric = 'op_margin'"
                   >
@@ -459,7 +501,7 @@
                 <span class="matrix-currency font-mono">Unit: {{ latestStatement?.metadata?.currency || 'IDR' }}</span>
               </div>
 
-              <!-- Historical Table Grid -->
+              <!-- Historical Table Grid (Standalone Quarters & Summary Totals) -->
               <div class="table-responsive">
                 <table class="matrix-table font-mono">
                   <thead>
@@ -469,10 +511,52 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="p in ['Q1', 'Q2', 'Q3', 'FY']" :key="p">
-                      <td class="period-cell">{{ p }}</td>
-                      <td v-for="y in uniqueYears" :key="y + p">
-                        {{ getMatrixValue(y, p, matrixMetric) }}
+                    <!-- Standalone 3M Quarters -->
+                    <tr v-for="row in matrixQuarterRows" :key="row.id">
+                      <td class="period-cell">
+                        {{ row.label }}
+                        <span class="sub-period-tag">{{ row.sub }}</span>
+                      </td>
+                      <td v-for="y in uniqueYears" :key="y + row.id">
+                        {{ getMatrixQuarterlyValue(y, row.id, matrixMetric) }}
+                      </td>
+                    </tr>
+
+                    <!-- Summary / Aggregation Rows -->
+                    <tr class="summary-divider-row">
+                      <td :colspan="uniqueYears.length + 1"></td>
+                    </tr>
+
+                    <!-- Full Year Total (FY) -->
+                    <tr class="summary-row highlight-fy">
+                      <td class="period-cell font-bold text-cyan">
+                        Full Year (FY)
+                        <span class="sub-period-tag">12M Cumulative Total</span>
+                      </td>
+                      <td v-for="y in uniqueYears" :key="'fy-' + y" class="font-bold text-cyan">
+                        {{ getMatrixSummaryValue(y, 'fy', matrixMetric) }}
+                      </td>
+                    </tr>
+
+                    <!-- Trailing Twelve Months (TTM) -->
+                    <tr class="summary-row highlight-ttm">
+                      <td class="period-cell font-bold text-green">
+                        Trailing 12M (TTM)
+                        <span class="sub-period-tag">4-Quarter Rolling Sum</span>
+                      </td>
+                      <td v-for="y in uniqueYears" :key="'ttm-' + y" class="font-bold text-green">
+                        {{ getMatrixSummaryValue(y, 'ttm', matrixMetric) }}
+                      </td>
+                    </tr>
+
+                    <!-- Annualized Run-Rate -->
+                    <tr class="summary-row highlight-annualized">
+                      <td class="period-cell font-bold text-amber">
+                        Annualized Rate
+                        <span class="sub-period-tag">Pace Projection</span>
+                      </td>
+                      <td v-for="y in uniqueYears" :key="'ann-' + y" class="font-bold text-amber">
+                        {{ getMatrixSummaryValue(y, 'annualized', matrixMetric) }}
                       </td>
                     </tr>
                   </tbody>
@@ -1305,7 +1389,14 @@ defineEmits<{
 }>()
 
 const activeModalTab = ref<'terminal' | 'moat' | 'chart' | 'news'>('terminal')
-const matrixMetric = ref<'net_income' | 'revenue' | 'fcf' | 'roic' | 'roe' | 'op_margin' | 'gross_margin' | 'invested_capital'>('net_income')
+const matrixMetric = ref<'net_income' | 'revenue' | 'fcf' | 'cfo' | 'dividends' | 'roic' | 'roe' | 'op_margin' | 'gross_margin' | 'invested_capital'>('net_income')
+
+const matrixQuarterRows = [
+  { id: 'q1', label: 'Q1', sub: '3M Standalone' },
+  { id: 'q2', label: 'Q2', sub: '3M Standalone' },
+  { id: 'q3', label: 'Q3', sub: '3M Standalone' },
+  { id: 'q4', label: 'Q4', sub: '3M Standalone' }
+]
 
 const statements = ref<XBRLStatement[]>([])
 const sectorNews = ref<News[]>([])
@@ -1807,21 +1898,169 @@ const fetchSectorNews = async () => {
   }
 }
 
-const getMatrixValue = (year: number, period: string, metric: 'net_income' | 'revenue' | 'fcf' | 'roic' | 'roe' | 'op_margin' | 'gross_margin' | 'invested_capital') => {
-  const stmt = statements.value.find(s => s.year === year && s.period.toUpperCase() === period.toUpperCase())
-  if (!stmt) return '-'
-  if (metric === 'net_income') return formatCompact(stmt.core?.net_income_parent || stmt.core?.net_income || 0)
-  if (metric === 'revenue') return formatCompact(stmt.core?.revenue || 0)
-  if (metric === 'fcf') return formatCompact(stmt.core?.free_cash_flow || 0)
-  if (metric === 'roic') return formatPct((stmt.computed_ratios?.roic || 0) * 100)
-  if (metric === 'roe') return formatPct((stmt.computed_ratios?.roe || 0) * 100)
-  if (metric === 'op_margin') return formatPct(stmt.computed_ratios?.operating_margin_pct)
-  if (metric === 'gross_margin') return formatPct(stmt.computed_ratios?.gross_margin_pct)
-  if (metric === 'invested_capital') {
-    const ic = (stmt.core?.total_equity || 0) + (stmt.core?.total_debt || 0) - (stmt.core?.cash_and_equivalents || 0)
-    return formatCompact(ic)
+const isFlowMetric = (metric: string) => {
+  return ['net_income', 'revenue', 'fcf', 'cfo', 'dividends'].includes(metric)
+}
+
+const isPercentMetric = (metric: string) => {
+  return ['roic', 'roe', 'op_margin', 'gross_margin', 'net_margin'].includes(metric)
+}
+
+const getRawStatement = (year: number, period: string) => {
+  const p = period.toUpperCase()
+  return statements.value.find(s => {
+    if (s.year !== year) return false
+    const sp = s.period.toUpperCase()
+    if (p === 'FY' || p === 'TAHUNAN' || p === 'AUDIT' || p === 'Q4') {
+      return sp === 'FY' || sp === 'TAHUNAN' || sp === 'AUDIT' || sp === 'Q4' || sp === 'IV'
+    }
+    return sp === p
+  })
+}
+
+const getMetricFromStatement = (stmt: XBRLStatement | undefined, metric: string): number | null => {
+  if (!stmt) return null
+  if (metric === 'net_income') return stmt.core?.net_income_parent || stmt.core?.net_income || 0
+  if (metric === 'revenue') return stmt.core?.revenue || 0
+  if (metric === 'fcf') return stmt.core?.free_cash_flow || 0
+  if (metric === 'cfo') return stmt.core?.operating_cash_flow || 0
+  if (metric === 'dividends') return stmt.core?.dividends_paid || 0
+  if (metric === 'roic') return (stmt.computed_ratios?.roic || 0) * 100
+  if (metric === 'roe') return (stmt.computed_ratios?.roe || 0) * 100
+  if (metric === 'op_margin') return stmt.computed_ratios?.operating_margin_pct || 0
+  if (metric === 'gross_margin') return stmt.computed_ratios?.gross_margin_pct || 0
+  if (metric === 'invested_capital') return (stmt.core?.total_equity || 0) + (stmt.core?.total_debt || 0) - (stmt.core?.cash_and_equivalents || 0)
+  return null
+}
+
+const getMatrixQuarterlyValue = (year: number, quarterId: string, metric: string) => {
+  const stmtQ1 = getRawStatement(year, 'Q1')
+  const stmtQ2 = getRawStatement(year, 'Q2')
+  const stmtQ3 = getRawStatement(year, 'Q3')
+  const stmtFY = getRawStatement(year, 'FY')
+
+  const valQ1 = getMetricFromStatement(stmtQ1, metric)
+  const valQ2 = getMetricFromStatement(stmtQ2, metric)
+  const valQ3 = getMetricFromStatement(stmtQ3, metric)
+  const valFY = getMetricFromStatement(stmtFY, metric)
+
+  if (isFlowMetric(metric)) {
+    let result: number | null = null
+
+    if (quarterId === 'q1') {
+      result = valQ1
+    } else if (quarterId === 'q2') {
+      if (valQ2 !== null && valQ1 !== null) {
+        result = valQ2 - valQ1
+      } else if (valQ2 !== null) {
+        result = valQ2
+      }
+    } else if (quarterId === 'q3') {
+      if (valQ3 !== null && valQ2 !== null) {
+        result = valQ3 - valQ2
+      } else if (valQ3 !== null && valQ1 !== null) {
+        result = valQ3 - valQ1
+      } else if (valQ3 !== null) {
+        result = valQ3
+      }
+    } else if (quarterId === 'q4') {
+      if (valFY !== null && valQ3 !== null) {
+        result = valFY - valQ3
+      } else if (valFY !== null && valQ2 !== null) {
+        result = valFY - valQ2
+      } else if (valFY !== null) {
+        result = valFY
+      }
+    }
+
+    if (result === null || isNaN(result)) return '-'
+    return formatCompact(result)
   }
-  return '-'
+
+  // Non-flow metrics (ratios or point-in-time)
+  let stmt: XBRLStatement | undefined
+  if (quarterId === 'q1') stmt = stmtQ1
+  if (quarterId === 'q2') stmt = stmtQ2
+  if (quarterId === 'q3') stmt = stmtQ3
+  if (quarterId === 'q4') stmt = stmtFY
+
+  const val = getMetricFromStatement(stmt, metric)
+  if (val === null || isNaN(val)) return '-'
+  if (isPercentMetric(metric)) return formatPct(val)
+  return formatCompact(val)
+}
+
+const getMatrixSummaryValue = (year: number, summaryType: 'fy' | 'ttm' | 'annualized', metric: string) => {
+  const stmtQ1 = getRawStatement(year, 'Q1')
+  const stmtQ2 = getRawStatement(year, 'Q2')
+  const stmtQ3 = getRawStatement(year, 'Q3')
+  const stmtFY = getRawStatement(year, 'FY')
+
+  const valQ1 = getMetricFromStatement(stmtQ1, metric)
+  const valQ2 = getMetricFromStatement(stmtQ2, metric)
+  const valQ3 = getMetricFromStatement(stmtQ3, metric)
+  const valFY = getMetricFromStatement(stmtFY, metric)
+
+  if (isFlowMetric(metric)) {
+    if (summaryType === 'fy') {
+      if (valFY !== null) return formatCompact(valFY)
+      let sum = 0
+      let count = 0
+      if (valQ1 !== null) { sum += valQ1; count++ }
+      if (valQ2 !== null && valQ1 !== null) { sum += (valQ2 - valQ1); count++ }
+      if (valQ3 !== null && valQ2 !== null) { sum += (valQ3 - valQ2); count++ }
+      if (count > 0) return formatCompact(sum)
+      return '-'
+    }
+
+    if (summaryType === 'annualized') {
+      if (valFY !== null) return formatCompact(valFY)
+      if (valQ3 !== null) return formatCompact(valQ3 * (4 / 3))
+      if (valQ2 !== null) return formatCompact(valQ2 * 2)
+      if (valQ1 !== null) return formatCompact(valQ1 * 4)
+      return '-'
+    }
+
+    if (summaryType === 'ttm') {
+      if (valFY !== null) return formatCompact(valFY)
+      if (valQ3 !== null) {
+        const priorFY = getRawStatement(year - 1, 'FY')
+        const priorQ3 = getRawStatement(year - 1, 'Q3')
+        const priorFYVal = getMetricFromStatement(priorFY, metric)
+        const priorQ3Val = getMetricFromStatement(priorQ3, metric)
+        const priorQ4 = (priorFYVal !== null && priorQ3Val !== null) ? (priorFYVal - priorQ3Val) : 0
+        return formatCompact(valQ3 + priorQ4)
+      }
+      if (valQ2 !== null) {
+        const priorFY = getRawStatement(year - 1, 'FY')
+        const priorQ2 = getRawStatement(year - 1, 'Q2')
+        const priorFYVal = getMetricFromStatement(priorFY, metric)
+        const priorQ2Val = getMetricFromStatement(priorQ2, metric)
+        const prior2H = (priorFYVal !== null && priorQ2Val !== null) ? (priorFYVal - priorQ2Val) : 0
+        return formatCompact(valQ2 + prior2H)
+      }
+      if (valQ1 !== null) {
+        const priorFY = getRawStatement(year - 1, 'FY')
+        const priorQ1 = getRawStatement(year - 1, 'Q1')
+        const priorFYVal = getMetricFromStatement(priorFY, metric)
+        const priorQ1Val = getMetricFromStatement(priorQ1, metric)
+        const prior3Q = (priorFYVal !== null && priorQ1Val !== null) ? (priorFYVal - priorQ1Val) : 0
+        return formatCompact(valQ1 + prior3Q)
+      }
+      return '-'
+    }
+  }
+
+  // Non-flow metrics (ratios / point-in-time)
+  let val: number | null = null
+  if (valFY !== null) val = valFY
+  else if (valQ3 !== null) val = valQ3
+  else if (valQ2 !== null) val = valQ2
+  else if (valQ1 !== null) val = valQ1
+
+  if (val === null || isNaN(val)) return '-'
+  if (isPercentMetric(metric)) return formatPct(val)
+  return formatCompact(val)
 }
 
 const formatMultiple = (val?: number) => {
@@ -2114,6 +2353,31 @@ watch(activeModalTab, (tab) => {
 .period-cell {
   color: #38bdf8;
   font-weight: 700;
+}
+.sub-period-tag {
+  display: block;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  font-weight: normal;
+}
+.summary-divider-row td {
+  padding: 3px 0 !important;
+  border-top: 1px dashed rgba(255, 255, 255, 0.15) !important;
+  border-bottom: none !important;
+  background: transparent !important;
+}
+.summary-row {
+  background: rgba(255, 255, 255, 0.02);
+}
+.highlight-fy {
+  border-top: 1px solid rgba(56, 189, 248, 0.3);
+  background: rgba(56, 189, 248, 0.05);
+}
+.highlight-ttm {
+  background: rgba(16, 185, 129, 0.05);
+}
+.highlight-annualized {
+  background: rgba(245, 158, 11, 0.05);
 }
 .key-stats-grid {
   display: grid;
