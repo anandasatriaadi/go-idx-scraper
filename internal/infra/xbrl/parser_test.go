@@ -3,6 +3,7 @@ package xbrl
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -56,19 +57,41 @@ func TestParseInstanceXML_Mock(t *testing.T) {
 
 func TestParseInstanceXML_DSSA(t *testing.T) {
 	files, _ := filepath.Glob("../../../saham/*DSSA*.zip")
+	var stmts []*domain.Statement
 	for _, f := range files {
 		stmt, err := ParseAnyFiling(f)
 		if err != nil {
 			t.Logf("err parsing %s: %v", f, err)
 			continue
 		}
-		domain.ComputeValuationAndRatios(stmt, nil, 40000)
-		t.Logf("=== File: %s ===", f)
-		t.Logf("Ticker: %s, Year: %d, Period: %s, Date: %s", stmt.Ticker, stmt.Year, stmt.Period, stmt.PeriodEndDate.Format("2006-01-02"))
-		t.Logf("Currency: %s, Mult: %f, FX: %f", stmt.Metadata.Currency, stmt.Metadata.RoundingMultiplier, stmt.Metadata.ConversionRate)
-		t.Logf("Shares: %f", stmt.Core.SharesOutstanding)
-		t.Logf("Equity: %f, NetIncome: %f, NetIncomeParent: %f", stmt.Core.TotalEquity, stmt.Core.NetIncome, stmt.Core.NetIncomeParent)
-		t.Logf("EPS: %f, BVPS: %f, GrahamNumber: %f", stmt.Valuation.NormalizedEPS, stmt.Valuation.NormalizedBVPS, stmt.Valuation.GrahamNumber)
+		stmts = append(stmts, stmt)
+	}
+
+	sort.Slice(stmts, func(i, j int) bool {
+		if stmts[i].Year != stmts[j].Year {
+			return stmts[i].Year < stmts[j].Year
+		}
+		return stmts[i].PeriodEndDate.Before(stmts[j].PeriodEndDate)
+	})
+
+	for i, s := range stmts {
+		var prior *domain.Statement
+		if i > 0 {
+			prior = stmts[i-1]
+		}
+		_ = domain.ComputeValuationAndRatios(s, prior, 1065.0)
+	}
+
+	domain.ApplyStockSplitAdjustment(stmts)
+
+	for _, s := range stmts {
+		t.Logf("Period: %d %s (Date: %s) -> OpIncome: %.0f, NetIncome: %.0f, ROIC: %.2f%%, ROE: %.2f%%, EPS: %.2f, BVPS: %.2f, Graham: %.2f, MOS: %.2f%%",
+			s.Year, s.Period, s.PeriodEndDate.Format("2006-01-02"),
+			s.Core.OperatingIncome, s.Core.NetIncome,
+			s.ComputedRatios.ROIC*100, s.ComputedRatios.ROE*100,
+			s.Valuation.NormalizedEPS, s.Valuation.NormalizedBVPS,
+			s.Valuation.GrahamNumber, s.Valuation.MarginOfSafetyPct,
+		)
 	}
 }
 
