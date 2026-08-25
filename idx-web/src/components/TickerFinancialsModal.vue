@@ -216,21 +216,27 @@
                 </div>
                 <div class="data-row">
                   <span class="label">Altman Z''-Score</span>
-                  <span :class="['val font-mono', (latestStatement?.computed_ratios?.altman_z_score || 0) > 2.6 ? 'text-green' : 'text-amber']">
+                  <span v-if="!isFinancialSector" :class="['val font-mono', (latestStatement?.computed_ratios?.altman_z_score || 0) > 2.6 ? 'text-green' : 'text-amber']">
                     {{ (latestStatement?.computed_ratios?.altman_z_score || 0).toFixed(2) }}
+                  </span>
+                  <span v-else class="val font-mono text-secondary" title="Altman Z-Score is not applicable to deposit-taking commercial banks">
+                    N/A (Banking)
                   </span>
                 </div>
                 <div class="data-row">
                   <span class="label">Current Ratio</span>
-                  <span class="val font-mono">{{ (latestStatement?.computed_ratios?.current_ratio || 0).toFixed(2) }}x</span>
+                  <span v-if="!isFinancialSector" class="val font-mono">{{ (latestStatement?.computed_ratios?.current_ratio || 0).toFixed(2) }}x</span>
+                  <span v-else class="val font-mono text-secondary" title="Commercial banks do not classify balance sheets into current assets/liabilities">N/A (Banking)</span>
                 </div>
                 <div class="data-row">
                   <span class="label">Debt to Equity</span>
-                  <span class="val font-mono">{{ (latestStatement?.computed_ratios?.debt_to_equity || 0).toFixed(2) }}x</span>
+                  <span v-if="!isFinancialSector" class="val font-mono">{{ (latestStatement?.computed_ratios?.debt_to_equity || 0).toFixed(2) }}x</span>
+                  <span v-else class="val font-mono text-secondary" title="Bank liabilities consist of customer deposits (DPK)">N/A (Deposits)</span>
                 </div>
                 <div class="data-row">
                   <span class="label">Interest Coverage</span>
-                  <span class="val font-mono">{{ (latestStatement?.computed_ratios?.interest_coverage_ratio || 0).toFixed(2) }}x</span>
+                  <span v-if="!isFinancialSector" class="val font-mono">{{ (latestStatement?.computed_ratios?.interest_coverage_ratio || 0).toFixed(2) }}x</span>
+                  <span v-else class="val font-mono text-secondary">N/A (Banking)</span>
                 </div>
               </div>
             </div>
@@ -1060,6 +1066,12 @@ const loadingNews = ref(false)
 const latestStatement = computed(() => {
   if (statements.value.length === 0) return null
   return statements.value[0]
+})
+
+const isFinancialSector = computed(() => {
+  const s = latestStatement.value?.metadata?.sector?.toLowerCase() || ''
+  const ind = latestStatement.value?.metadata?.industry?.toLowerCase() || ''
+  return s.includes('financial') || s.includes('finance') || ind.includes('bank')
 })
 
 const latestTimingSignal = computed(() => {
