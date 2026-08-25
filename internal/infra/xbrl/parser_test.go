@@ -134,6 +134,44 @@ func TestParseInstanceXML_PGAS(t *testing.T) {
 	}
 }
 
+func TestParseInstanceXML_BBRI(t *testing.T) {
+	files, _ := filepath.Glob("../../../saham/*BBRI*.zip")
+	var stmts []*domain.Statement
+	for _, f := range files {
+		stmt, err := ParseAnyFiling(f)
+		if err != nil {
+			t.Logf("err parsing %s: %v", f, err)
+			continue
+		}
+		stmts = append(stmts, stmt)
+	}
+
+	sort.Slice(stmts, func(i, j int) bool {
+		if stmts[i].Year != stmts[j].Year {
+			return stmts[i].Year < stmts[j].Year
+		}
+		return stmts[i].PeriodEndDate.Before(stmts[j].PeriodEndDate)
+	})
+
+	for i, s := range stmts {
+		var prior *domain.Statement
+		if i > 0 {
+			prior = stmts[i-1]
+		}
+		_ = domain.ComputeValuationAndRatios(s, prior, 4800.0) // ~4800 IDR market price for BBRI
+	}
+
+	for _, s := range stmts {
+		t.Logf("=== BBRI %d %s (Date: %s) === Sector: %s, CurrentRatio: %.2f, DE: %.2f, AltmanZ: %.2f, Piotroski: %d/9, ROIC: %.2f%%, ROE: %.2f%%, EPS: %.2f, BVPS: %.2f, Graham: %.2f, MOS: %.2f%%",
+			s.Year, s.Period, s.PeriodEndDate.Format("2006-01-02"), s.Metadata.Sector,
+			s.ComputedRatios.CurrentRatio, s.ComputedRatios.DebtToEquity, s.ComputedRatios.AltmanZScore,
+			s.ComputedRatios.PiotroskiFScore, s.ComputedRatios.ROIC*100, s.ComputedRatios.ROE*100,
+			s.Valuation.NormalizedEPS, s.Valuation.NormalizedBVPS,
+			s.Valuation.GrahamNumber, s.Valuation.MarginOfSafetyPct,
+		)
+	}
+}
+
 func TestParseInstanceXML_AADI(t *testing.T) {
 	// Sample file from extracted instance.zip
 	filePath := "/tmp/idx-samples/instance/instance.xbrl"
