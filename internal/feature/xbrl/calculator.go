@@ -145,23 +145,29 @@ func ComputeValuationAndRatios(stmt *Statement, priorStmt *Statement, currentSto
 		c.SharesOutstanding = shares
 	}
 
-	if shares <= 1 && v.NormalizedEPS > 0 && effectiveNetIncome > 0 {
-		shares = effectiveNetIncome / v.NormalizedEPS
+	if shares <= 1 && v.NormalizedEPS > 0 {
+		if c.NetIncome > 0 {
+			shares = c.NetIncome / v.NormalizedEPS
+		} else if effectiveNetIncome > 0 {
+			shares = effectiveNetIncome / v.NormalizedEPS
+		}
+		c.SharesOutstanding = shares
+	}
+	if shares <= 1 && priorStmt != nil && priorStmt.Core.SharesOutstanding > 1000 {
+		shares = priorStmt.Core.SharesOutstanding
 		c.SharesOutstanding = shares
 	}
 	if shares <= 0 {
 		shares = 1.0
 	}
 
-	// If normalized EPS was in USD, normalize to IDR
-	if stmt.Metadata.Currency == "USD" && v.NormalizedEPS > 0 {
+	// Always compute normalized EPS directly from effectiveNetIncome and shares for mathematical consistency with BVPS
+	if shares > 1 && effectiveNetIncome != 0 {
+		v.NormalizedEPS = (effectiveNetIncome * fxRate) / shares
+	} else if stmt.Metadata.Currency == "USD" && v.NormalizedEPS > 0 {
 		v.NormalizedEPS = v.NormalizedEPS * fxRate
 	}
 
-	// Normalized per-share values in IDR
-	if v.NormalizedEPS == 0 && shares > 1 {
-		v.NormalizedEPS = (effectiveNetIncome * fxRate) / shares
-	}
 	if shares > 1 {
 		v.NormalizedBVPS = (c.TotalEquity * fxRate) / shares
 		v.RevenuePerShare = (c.Revenue * fxRate) / shares

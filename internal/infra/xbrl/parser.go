@@ -396,6 +396,21 @@ func finalizeCoreFinancials(s *domain.Statement) {
 	if c.EBITDA == 0 && c.OperatingIncome != 0 {
 		c.EBITDA = c.OperatingIncome + (c.CapEx * 0.7) // Estimate D&A if not explicitly separated
 	}
+	if c.SharesOutstanding == 0 {
+		for _, tag := range []string{"NumberOfIssuedAndFullyPaidShares", "WeightedAverageShares", "NumberOfSharesOutstanding", "IssuedAndFullyPaidShares"} {
+			if m, ok := s.Facts[tag]; ok {
+				for _, fv := range m {
+					if fv.Value > 1000 {
+						c.SharesOutstanding = fv.Value
+						break
+					}
+				}
+				if c.SharesOutstanding > 0 {
+					break
+				}
+			}
+		}
+	}
 }
 
 func parseFlexibleDate(val string) (time.Time, error) {
