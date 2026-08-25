@@ -79,14 +79,24 @@ func run() error {
 	briefingRepo := newsRepo.NewBriefingRepository(db)
 	service := news.NewService(repo, logger, cfg)
 
-	browser, err := br.SetupSelenium(cfg)
-	if err != nil {
-		logger.Error("Failed to setup selenium", zap.Error(err))
-		return err
-	}
-	defer browser.Close()
+	var scraper *kontan.Scraper
+	var browser *br.SeleniumBrowser
 
-	scraper := kontan.NewScraper(logger, kontan.NewDefaultBrowser(browser.Driver))
+	if noHeadless {
+		cfg.SetHeadless(false)
+		var err error
+		browser, err = br.SetupSelenium(cfg)
+		if err != nil {
+			logger.Error("Failed to setup selenium", zap.Error(err))
+			return err
+		}
+		defer browser.Close()
+		scraper = kontan.NewScraper(logger, kontan.NewDefaultBrowser(browser.Driver))
+	} else {
+		logger.Info("Using low-memory, zero-overhead safe-golang HTTP scraper")
+		scraper = kontan.NewScraper(logger, kontan.NewHTTPBrowser())
+	}
+	scraper.WithLinkFilter(repo.ExistsByLink)
 
 	// GMT+8 (WITA / Singapore / Perth timezone)
 	locGMT8 := time.FixedZone("GMT+8", 8*3600)
@@ -138,10 +148,21 @@ func run() error {
 		logger.Error("Scraping finished with error", zap.Error(err))
 	}
 
-	if len(ids) > 0 {
-		logger.Info("Summarizing newly fetched articles", zap.Int("count", len(ids)))
+	// Summarize all pending unsummarized articles in optimized batches
+	pendingNews, pErr := repo.FindPendingSummary(ctx, 3000)
+	if pErr == nil && len(pendingNews) > 0 {
+		var pendingIDs []bson.ObjectID
+		for _, pn := range pendingNews {
+			pendingIDs = append(pendingIDs, pn.ID)
+		}
+		logger.Info("Batch summarizing pending articles", zap.Int("total_pending", len(pendingIDs)))
+		if err := service.Summarize(ctx, pendingIDs); err != nil {
+			logger.Error("Failed to batch summarize pending news", zap.Error(err))
+		}
+	} else if len(ids) > 0 {
+		logger.Info("Batch summarizing newly fetched articles", zap.Int("count", len(ids)))
 		if err := service.Summarize(ctx, ids); err != nil {
-			logger.Error("Failed to summarize news", zap.Error(err))
+			logger.Error("Failed to batch summarize news", zap.Error(err))
 		}
 	}
 

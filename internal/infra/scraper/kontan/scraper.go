@@ -64,9 +64,10 @@ func (b *DefaultBrowser) FetchContent(ctx context.Context, url string) (string, 
 }
 
 type Scraper struct {
-	logger    *zap.Logger
-	processor *HTMLToMarkdownProcessor
-	browser   Browser
+	logger     *zap.Logger
+	processor  *HTMLToMarkdownProcessor
+	browser    Browser
+	linkFilter func(ctx context.Context, link string) (bool, error)
 }
 
 func NewScraper(logger *zap.Logger, browser Browser) *Scraper {
@@ -79,6 +80,11 @@ func NewScraper(logger *zap.Logger, browser Browser) *Scraper {
 
 func (s *Scraper) WithBrowser(b Browser) *Scraper {
 	s.browser = b
+	return s
+}
+
+func (s *Scraper) WithLinkFilter(fn func(ctx context.Context, link string) (bool, error)) *Scraper {
+	s.linkFilter = fn
 	return s
 }
 
@@ -135,11 +141,20 @@ func (s *Scraper) Scrape(ctx context.Context, startDate, endDate time.Time, onNe
 				for _, art := range articles {
 					key := normalizeArticleKey(art.Link)
 					if key != "" && seenLinks[key] {
-						s.logger.Debug("Skipping duplicate article", zap.String("link", art.Link), zap.String("key", key))
+						s.logger.Debug("Skipping duplicate article in session", zap.String("link", art.Link), zap.String("key", key))
 						continue
 					}
 					if key != "" {
 						seenLinks[key] = true
+					}
+
+					// Fast Pre-Filter: Check if article link already exists in MongoDB before fetching full HTML content
+					if s.linkFilter != nil {
+						exists, err := s.linkFilter(ctx, art.Link)
+						if err == nil && exists {
+							s.logger.Debug("Article already in database, skipping content fetch", zap.String("link", art.Link))
+							continue
+						}
 					}
 
 					s.logger.Info("Fetching article content", zap.String("link", art.Link))

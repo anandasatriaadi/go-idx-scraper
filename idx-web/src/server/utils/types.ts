@@ -48,6 +48,7 @@ export interface News {
   subsector?: string;
   industry?: string;
   is_industry_wide?: boolean;
+  status?: 'pending' | 'summarized' | 'failed';
 }
 
 export interface BriefingItem {

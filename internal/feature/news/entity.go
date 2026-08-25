@@ -8,6 +8,12 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
+const (
+	StatusPending    = "pending"
+	StatusSummarized = "summarized"
+	StatusFailed     = "failed"
+)
+
 type News struct {
 	ID                 bson.ObjectID `bson:"_id,omitempty" json:"id"`
 	CreatedAt          time.Time     `bson:"created_at" json:"created_at"`
@@ -26,6 +32,7 @@ type News struct {
 	Subsector          string        `bson:"subsector" json:"subsector"`
 	Industry           string        `bson:"industry,omitempty" json:"industry,omitempty"`
 	IsIndustryWide     bool          `bson:"is_industry_wide" json:"is_industry_wide"`
+	Status             string        `bson:"status,omitempty" json:"status,omitempty"`
 }
 
 type BriefingItem struct {
@@ -64,6 +71,7 @@ type Repository interface {
 	FindByID(ctx context.Context, id bson.ObjectID) (*News, error)
 	UpdateByID(ctx context.Context, id bson.ObjectID, update any) error
 	ExistsByLink(ctx context.Context, link string) (bool, error)
+	FindPendingSummary(ctx context.Context, limit int) ([]*News, error)
 }
 
 // Port: BriefingRepository defines briefing data persistence

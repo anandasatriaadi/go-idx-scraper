@@ -29,6 +29,9 @@ func (r *NewsRepository) Create(ctx context.Context, model *news.News) error {
 		model.CreatedAt = now
 	}
 	model.UpdatedAt = now
+	if model.Status == "" {
+		model.Status = news.StatusPending
+	}
 	_, err := r.collection.InsertOne(ctx, model)
 	return err
 }
@@ -65,6 +68,20 @@ func (r *NewsRepository) ExistsByLink(ctx context.Context, link string) (bool, e
 		return false, err
 	}
 	return count > 0, nil
+}
+
+// FindPendingSummary retrieves news articles that have not yet been summarized (status is pending or missing/empty)
+func (r *NewsRepository) FindPendingSummary(ctx context.Context, limit int) ([]*news.News, error) {
+	filter := bson.M{
+		"$or": []bson.M{
+			{"status": news.StatusPending},
+			{"status": bson.M{"$exists": false}},
+			{"status": ""},
+			{"summary": ""},
+		},
+	}
+	opts := options.Find().SetSort(bson.D{{Key: "date", Value: -1}}).SetLimit(int64(limit))
+	return r.FindAll(ctx, filter, opts)
 }
 
 // UpdateByID updates a document by ID

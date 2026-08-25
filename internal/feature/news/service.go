@@ -53,49 +53,106 @@ type NewsSummary struct {
 	IsIndustryWide     bool     `json:"is_industry_wide" jsonschema:"description=True if the news affects an entire sector or macroeconomic policy rather than just one individual company"`
 }
 
+type BatchItemSummary struct {
+	ArticleID          string   `json:"article_id" jsonschema:"description=The exact article ID matching the provided article"`
+	Title              string   `json:"title" jsonschema:"description=An updated engaging and objective title capturing the essence of the article"`
+	Summary            string   `json:"summary" jsonschema:"description=Concise 3-sentence summary highlighting financial facts figures and immediate market implications"`
+	Priority           int      `json:"priority" jsonschema:"description=Market impact priority from 1 (highest market urgency) to 10 (routine)"`
+	ValueScore         int      `json:"value_score" jsonschema:"description=Fundamental value investing impact score strictly between -10 and +10"`
+	ImpactDirection    string   `json:"impact_direction" jsonschema:"enum=Bullish,enum=Bearish,enum=Neutral,description=Directional impact on underlying business intrinsic value"`
+	InvestmentTakeaway string   `json:"investment_takeaway" jsonschema:"description=1-2 sentence actionable takeaway for a disciplined long-term value investor"`
+	Tickers            []string `json:"tickers" jsonschema:"description=List of 4-letter IDX stock ticker symbols (e.g. ['BBRI', 'BBCA']). Empty array if none."`
+	Sector             string   `json:"sector" jsonschema:"enum=A. Energy,enum=B. Basic Materials,enum=C. Industrials,enum=D. Consumer Non-Cyclicals,enum=E. Consumer Cyclicals,enum=F. Healthcare,enum=G. Financials,enum=H. Properties and Real Estate,enum=I. Technology,enum=J. Infrastructures,enum=K. Transportation and Logistic,enum=Macroeconomics,description=Official IDX Industrial Classification (IDX-IC) Primary Sector"`
+	Subsector          string   `json:"subsector" jsonschema:"enum=A1. Oil, Gas, and Coal,enum=A2. Alternative Energy,enum=B1. Basic Materials,enum=C1. Industrial Goods,enum=C2. Industrial Services,enum=C3. Multi-sector Holdings,enum=D1. Food and Staples Retailing,enum=D2. Food and Beverage,enum=D3. Tobacco,enum=D4. Nondurable Household Products,enum=E1. Automobiles and Components,enum=E2. Household Goods,enum=E3. Leisure Goods,enum=E4. Apparel and Luxury Goods,enum=E5. Consumer Services,enum=E6. Media and Entertainment,enum=E7. Retailing,enum=F1. Healthcare Equipment & Providers,enum=F2. Pharmaceuticals & Health Care Research,enum=G1. Banks,enum=G2. Financing Service,enum=G3. Investment Service,enum=G4. Insurance,enum=G5. Holding and Investment Companies,enum=H1. Properties & Real Estate,enum=I1. Software & IT Services,enum=I2. Technology Hardware & Equipment,enum=J1. Transportation Infrastructure,enum=J2. Heavy Constructions & Civil Engineering,enum=J3. Telecommunication,enum=J4. Utilities,enum=K1. Transportation,enum=K2. Logistics & Deliveries,enum=General Market & Policy,description=Official IDX-IC Subsector classification"`
+	IsIndustryWide     bool     `json:"is_industry_wide" jsonschema:"description=True if the news affects an entire sector or macroeconomic policy rather than just one individual company"`
+}
+
+type BatchSummariesOutput struct {
+	Summaries []BatchItemSummary `json:"summaries" jsonschema:"description=List of structured evaluations for each article in the batch"`
+}
+
 func (s *Service) Summarize(ctx context.Context, ids []bson.ObjectID) error {
-	s.logger.Info("Starting news summarization", zap.Int("num_ids", len(ids)))
+	s.logger.Info("Starting news batch summarization", zap.Int("num_ids", len(ids)))
 	if s.cfg == nil {
 		return fmt.Errorf("config not loaded")
 	}
 	client := openrouter.NewClient(s.cfg.OpenrouterApiKey)
 
-	schema, err := jsonschema.GenerateSchemaForType(NewsSummary{})
+	batchSchema, err := jsonschema.GenerateSchemaForType(BatchSummariesOutput{})
 	if err != nil {
-		return fmt.Errorf("GenerateSchemaForType error: %v", err)
+		return fmt.Errorf("GenerateSchemaForType error: %w", err)
 	}
 
-	for _, id := range ids {
-		s.logger.Info("Processing news ID", zap.String("id", id.Hex()))
-		n, err := s.repo.FindByID(ctx, id)
-		if err != nil {
-			s.logger.Error("Error finding news by ID", zap.String("id", id.Hex()), zap.Error(err))
+	const batchSize = 8
+
+	for i := 0; i < len(ids); i += batchSize {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		end := i + batchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		chunkIDs := ids[i:end]
+
+		var validArticles []*News
+		var promptArticles strings.Builder
+
+		for _, id := range chunkIDs {
+			n, err := s.repo.FindByID(ctx, id)
+			if err != nil {
+				s.logger.Warn("Error finding news by ID", zap.String("id", id.Hex()), zap.Error(err))
+				continue
+			}
+			if n.Status == StatusSummarized && n.Summary != "" {
+				s.logger.Debug("Article already summarized, skipping", zap.String("id", id.Hex()))
+				continue
+			}
+
+			// Trim content if exceptionally large to protect token budget
+			content := strings.TrimSpace(n.Content)
+			if len(content) > 3500 {
+				content = content[:3500] + "..."
+			}
+
+			validArticles = append(validArticles, n)
+			promptArticles.WriteString(fmt.Sprintf("\n==============================\n[Article ID: %s]\nOriginal Title: %s\nContent:\n%s\n==============================\n", n.ID.Hex(), n.Title, content))
+		}
+
+		if len(validArticles) == 0 {
 			continue
 		}
 
+		s.logger.Info("Submitting batch summarization to Gemini 3.7 Flash",
+			zap.Int("batch_index", (i/batchSize)+1),
+			zap.Int("total_batches", (len(ids)+batchSize-1)/batchSize),
+			zap.Int("articles_in_batch", len(validArticles)),
+		)
+
 		prompt := fmt.Sprintf(`You are an expert Personal Investment Manager and seasoned Value Investor adhering strictly to the fundamental principles of Benjamin Graham, Warren Buffett, and Charlie Munger.
 
-Analyze the provided financial news article with super objective, disciplined rigor. Evaluate whether this event impacts intrinsic business value, economic moats, capital allocation, balance sheet durability, or free cash flow generation.
+Analyze each of the following financial news articles with super objective, disciplined rigor. Evaluate whether each event impacts intrinsic business value, economic moats, capital allocation, balance sheet durability, or free cash flow generation.
 
-Provide your evaluation adhering to the following rules:
-- Title: Clear, concise, and professional headline.
-- Summary: Exactly 3 sentences. Cover core facts, financial metrics, and operational impact.
-- Priority: Integer from 1 to 10 (1 = critical high-impact market event, 10 = routine noise).
-- ValueScore: Integer from -10 to +10:
-  * -10 to -1: Fundamental destruction (deteriorating moat, dilutive acquisitions, high debt risk, governance red flags).
-  * 0: Neutral / Macro noise / Speculative price movements with no underlying business value change.
-  * +1 to +10: Fundamental enhancement (widening moat, high ROIC reinvestment, robust organic growth, disciplined capital allocation).
-- ImpactDirection: Exactly "Bullish", "Bearish", or "Neutral".
-- InvestmentTakeaway: 1 to 2 sentences summarizing the bottom-line takeaway for a long-term value investor.
-- Tickers: Array of uppercase 4-letter Indonesian stock tickers explicitly mentioned or impacted (e.g. ["BBRI", "BBCA"]). Empty array [] if no specific company is mentioned.
-- Sector: Official IDX-IC Sector (e.g. "G. Financials", "A. Energy", "Macroeconomics").
-- Subsector: Official IDX-IC Subsector (e.g. "G1. Banks", "A1. Oil, Gas, and Coal", "General Market & Policy").
-- IsIndustryWide: Boolean true if the news affects the whole sector or macro economy rather than an isolated company.
+Provide a structured evaluation for EVERY article in the batch, returning an array of summaries with the matching article_id.
 
-Article:
-"""
-%s
-"""`, n.Content)
+Guidelines per article:
+- article_id: The exact article ID string provided.
+- title: Clear, concise, and professional headline.
+- summary: Exactly 3 sentences. Cover core facts, financial metrics, and operational impact.
+- priority: Integer from 1 (highest market urgency) to 10 (routine noise).
+- value_score: Integer from -10 to +10 (-10 = severe capital destruction, 0 = neutral noise, +10 = massive moat widening).
+- impact_direction: Exactly "Bullish", "Bearish", or "Neutral".
+- investment_takeaway: 1-2 sentence bottom-line takeaway for a disciplined value investor.
+- tickers: Array of uppercase 4-letter IDX stock tickers (e.g. ["BBRI", "BBCA"]). Empty array [] if none.
+- sector: Official IDX-IC Sector (e.g. "G. Financials", "A. Energy", "Macroeconomics").
+- subsector: Official IDX-IC Subsector (e.g. "G1. Banks", "A1. Oil, Gas, and Coal", "General Market & Policy").
+- is_industry_wide: Boolean true if the news affects an entire sector or macro economy rather than an isolated company.
+
+ARTICLES TO EVALUATE:
+%s`, promptArticles.String())
 
 		request := openrouter.ChatCompletionRequest{
 			Model: "google/gemini-3.7-flash",
@@ -108,8 +165,8 @@ Article:
 			ResponseFormat: &openrouter.ChatCompletionResponseFormat{
 				Type: openrouter.ChatCompletionResponseFormatTypeJSONSchema,
 				JSONSchema: &openrouter.ChatCompletionResponseFormatJSONSchema{
-					Name:   "news_summary",
-					Schema: schema,
+					Name:   "batch_summaries",
+					Schema: batchSchema,
 					Strict: true,
 				},
 			},
@@ -117,54 +174,84 @@ Article:
 
 		res, err := client.CreateChatCompletion(ctx, request)
 		if err != nil {
-			s.logger.Error("Error creating chat completion for ID", zap.String("id", id.Hex()), zap.Error(err))
+			s.logger.Error("Error in batch chat completion", zap.Error(err))
+			// Mark batch articles as failed for future retry
+			for _, art := range validArticles {
+				_ = s.repo.UpdateByID(ctx, art.ID, bson.M{"$set": bson.M{"status": StatusFailed}})
+			}
 			continue
 		}
 
-		var summary NewsSummary
-		if len(res.Choices) > 0 {
-			if err := json.Unmarshal([]byte(res.Choices[0].Message.Content.Text), &summary); err != nil {
-				s.logger.Error("Error unmarshaling response for ID", zap.String("id", id.Hex()), zap.Error(err))
+		if len(res.Choices) == 0 {
+			s.logger.Warn("Empty choices returned from batch completion")
+			continue
+		}
+
+		var batchOutput BatchSummariesOutput
+		if err := json.Unmarshal([]byte(res.Choices[0].Message.Content.Text), &batchOutput); err != nil {
+			s.logger.Error("Error unmarshaling batch output", zap.Error(err))
+			continue
+		}
+
+		// Map summaries by article ID
+		summariesMap := make(map[string]BatchItemSummary)
+		for _, sm := range batchOutput.Summaries {
+			summariesMap[sm.ArticleID] = sm
+		}
+
+		// Persist each evaluated summary
+		for _, art := range validArticles {
+			sm, found := summariesMap[art.ID.Hex()]
+			if !found {
+				// Try partial match if id hex prefix matched
+				for k, v := range summariesMap {
+					if strings.Contains(k, art.ID.Hex()) || strings.Contains(art.ID.Hex(), k) {
+						sm = v
+						found = true
+						break
+					}
+				}
+			}
+
+			if !found {
+				s.logger.Warn("Article not found in batch output", zap.String("id", art.ID.Hex()))
+				_ = s.repo.UpdateByID(ctx, art.ID, bson.M{"$set": bson.M{"status": StatusPending}})
 				continue
 			}
 
-			s.logger.Info("Successfully summarized news",
-				zap.String("id", id.Hex()),
-				zap.String("title", summary.Title),
-				zap.Int("priority", summary.Priority),
-				zap.Int("value_score", summary.ValueScore),
-				zap.String("impact_direction", summary.ImpactDirection),
-				zap.Strings("tickers", summary.Tickers),
-				zap.String("sector", summary.Sector),
-				zap.String("subsector", summary.Subsector),
-			)
-
-			// Update the news document
 			update := bson.M{
 				"$set": bson.M{
-					"title":               summary.Title,
-					"summary":             summary.Summary,
-					"priority":            summary.Priority,
-					"value_score":         summary.ValueScore,
-					"impact_direction":    summary.ImpactDirection,
-					"investment_takeaway": summary.InvestmentTakeaway,
-					"tickers":             summary.Tickers,
-					"sector":              summary.Sector,
-					"subsector":           summary.Subsector,
-					"industry":            summary.Subsector, // backwards compatibility
-					"is_industry_wide":    summary.IsIndustryWide,
+					"title":               sm.Title,
+					"summary":             sm.Summary,
+					"priority":            sm.Priority,
+					"value_score":         sm.ValueScore,
+					"impact_direction":    sm.ImpactDirection,
+					"investment_takeaway": sm.InvestmentTakeaway,
+					"tickers":             sm.Tickers,
+					"sector":              sm.Sector,
+					"subsector":           sm.Subsector,
+					"industry":            sm.Subsector,
+					"is_industry_wide":    sm.IsIndustryWide,
+					"status":              StatusSummarized,
 					"updated_at":          time.Now(),
 				},
 			}
-			err = s.repo.UpdateByID(ctx, id, update)
-			if err != nil {
-				s.logger.Error("Error updating news for ID", zap.String("id", id.Hex()), zap.Error(err))
+
+			if err := s.repo.UpdateByID(ctx, art.ID, update); err != nil {
+				s.logger.Error("Failed to update summarized news", zap.String("id", art.ID.Hex()), zap.Error(err))
 			} else {
-				s.logger.Info("Successfully updated news", zap.String("id", id.Hex()))
+				s.logger.Info("Summarized & saved",
+					zap.String("id", art.ID.Hex()),
+					zap.String("title", sm.Title),
+					zap.Int("value_score", sm.ValueScore),
+					zap.String("impact", sm.ImpactDirection),
+					zap.Strings("tickers", sm.Tickers),
+				)
 			}
 		}
 	}
-	s.logger.Info("Completed news summarization")
+
+	s.logger.Info("Completed batch news summarization successfully")
 	return nil
 }
 

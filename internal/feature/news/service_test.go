@@ -31,6 +31,9 @@ func (m *MockRepository) UpdateByID(ctx context.Context, id bson.ObjectID, updat
 func (m *MockRepository) ExistsByLink(ctx context.Context, link string) (bool, error) {
 	return false, m.Err
 }
+func (m *MockRepository) FindPendingSummary(ctx context.Context, limit int) ([]*News, error) {
+	return m.NewsList, m.Err
+}
 
 func TestService_Create(t *testing.T) {
 	mock := &MockRepository{}
@@ -298,5 +301,63 @@ func TestDailyBriefing_SchemaGeneration(t *testing.T) {
 
 	if output.Title == "" || len(output.BullishLookout) != 1 {
 		t.Errorf("Unexpected unmarshaled briefing: %+v", output)
+	}
+}
+
+func TestBatchSummaries_Schema(t *testing.T) {
+	schema, err := jsonschema.GenerateSchemaForType(BatchSummariesOutput{})
+	if err != nil {
+		t.Fatalf("Failed to generate batch schema: %v", err)
+	}
+	if schema == nil {
+		t.Fatal("Expected non-nil batch schema")
+	}
+
+	jsonSample := `{
+		"summaries": [
+			{
+				"article_id": "6a8dc30b77c06a652ccf60bb",
+				"title": "Adhi Commuter Lolos PKPU",
+				"summary": "ADCP berhasil lolos dari gugatan PKPU. Perusahaan menyiapkan strategi penjualan unit ready stock. Likuiditas masih dalam pemantauan ketat.",
+				"priority": 5,
+				"value_score": 1,
+				"impact_direction": "Neutral",
+				"investment_takeaway": "Restrukturisasi utang berjalan, namun wait and see hingga cash flow pulih.",
+				"tickers": ["ADCP"],
+				"sector": "H. Properties and Real Estate",
+				"subsector": "H1. Properties & Real Estate",
+				"is_industry_wide": false
+			}
+		]
+	}`
+
+	var output BatchSummariesOutput
+	if err := json.Unmarshal([]byte(jsonSample), &output); err != nil {
+		t.Fatalf("Failed to unmarshal BatchSummariesOutput: %v", err)
+	}
+
+	if len(output.Summaries) != 1 {
+		t.Fatalf("Expected 1 summary, got %d", len(output.Summaries))
+	}
+	if output.Summaries[0].ArticleID != "6a8dc30b77c06a652ccf60bb" {
+		t.Errorf("Expected ArticleID match, got %s", output.Summaries[0].ArticleID)
+	}
+	if output.Summaries[0].ValueScore != 1 {
+		t.Errorf("Expected ValueScore 1, got %d", output.Summaries[0].ValueScore)
+	}
+}
+
+func TestNews_StatusField(t *testing.T) {
+	n := &News{
+		Title:  "Test Article",
+		Status: StatusPending,
+	}
+	if n.Status != "pending" {
+		t.Errorf("Expected status 'pending', got '%s'", n.Status)
+	}
+
+	n.Status = StatusSummarized
+	if n.Status != "summarized" {
+		t.Errorf("Expected status 'summarized', got '%s'", n.Status)
 	}
 }
