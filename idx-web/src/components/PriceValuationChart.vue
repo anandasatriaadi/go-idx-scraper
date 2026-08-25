@@ -177,7 +177,7 @@
         v-else
         ref="svgRef"
         class="chart-svg"
-        viewBox="0 0 800 340"
+        viewBox="0 0 1000 480"
         preserveAspectRatio="none"
         @mousemove="handleMouseMove"
         @touchmove="handleTouchMove"
@@ -564,7 +564,21 @@
           opacity="0.9"
         />
 
-        <!-- 8. Stock Price Area & Curve -->
+        <!-- 8. Volume Sub-Histogram (Bottom 18% of Canvas) -->
+        <g class="volume-bars-group">
+          <rect
+            v-for="(p, idx) in prices"
+            :key="'vol-' + idx"
+            :x="getX(idx) - getBarWidth / 2"
+            :y="getVolumeY(p.volume)"
+            :width="Math.max(1.5, getBarWidth)"
+            :height="getVolumeHeight(p.volume)"
+            :fill="p.close >= p.open ? '#10b981' : '#ef4444'"
+            opacity="0.25"
+          />
+        </g>
+
+        <!-- 9. Stock Price Area & Curve -->
         <path
           v-if="priceAreaPath"
           :d="priceAreaPath"
@@ -580,7 +594,7 @@
           stroke-linejoin="round"
         />
 
-        <!-- 9. Interactive Crosshair & Highlight Dot -->
+        <!-- 10. Interactive Crosshair & Highlight Dot -->
         <g v-if="hoveredIndex !== null && hoveredPoint" class="crosshair-group">
           <!-- Vertical Crosshair Line -->
           <line
@@ -734,11 +748,11 @@ const hasPbBands = computed(() => {
 })
 
 // SVG Layout Dimensions
-const svgWidth = 800
-const svgHeight = 340
-const padding = { top: 25, right: 65, bottom: 35, left: 15 }
-const plotWidth = svgWidth - padding.left - padding.right // 720
-const plotHeight = svgHeight - padding.top - padding.bottom // 280
+const svgWidth = 1000
+const svgHeight = 480
+const padding = { top: 28, right: 85, bottom: 42, left: 15 }
+const plotWidth = svgWidth - padding.left - padding.right // 900
+const plotHeight = svgHeight - padding.top - padding.bottom // 410
 
 const setRange = (r: string) => {
   if (selectedRange.value === r) return
@@ -815,13 +829,25 @@ const yBounds = computed(() => {
     if (p.close > max) max = p.close
   }
 
-  // Factor in Graham Number and MoS line if present and realistic (0.1x to 10x range)
+  const priceMin = min
+  const priceMax = max
+  const priceSpan = priceMax - priceMin
+
+  // Dynamic clamping: prevent distant external indicators from compressing price action
+  const maxAllowedUpper = priceMax + Math.max(priceSpan * 1.5, priceMax * 0.45)
+  const minAllowedLower = Math.max(0, priceMin - Math.max(priceSpan * 1.5, priceMin * 0.45))
+
+  // Factor in Graham Number and MoS line if within reasonable range
   if (props.grahamNumber && props.grahamNumber > 0) {
     const gVal = props.grahamNumber
     const mosVal = gVal * 0.70
-    if (gVal < max * 4 && gVal > min * 0.1) {
+    if (gVal <= maxAllowedUpper) {
       if (gVal > max) max = gVal
-      if (mosVal < min) min = mosVal
+    } else {
+      max = maxAllowedUpper
+    }
+    if (mosVal >= minAllowedLower && mosVal < min) {
+      min = mosVal
     }
   }
 
@@ -834,7 +860,7 @@ const yBounds = computed(() => {
       vb.mean_price_pe,
       vb.minus_1sd_price_pe,
       vb.minus_2sd_price_pe
-    ].filter(p => p && p > 0 && p < max * 5 && p > min * 0.1)
+    ].filter(p => p && p > 0 && p <= maxAllowedUpper && p >= minAllowedLower)
 
     for (const p of pePrices) {
       if (p < min) min = p
@@ -851,7 +877,7 @@ const yBounds = computed(() => {
       vb.mean_price_pb,
       vb.minus_1sd_price_pb,
       vb.minus_2sd_price_pb
-    ].filter(p => p && p > 0 && p < max * 5 && p > min * 0.1)
+    ].filter(p => p && p > 0 && p <= maxAllowedUpper && p >= minAllowedLower)
 
     for (const p of pbPrices) {
       if (p < min) min = p
@@ -862,7 +888,7 @@ const yBounds = computed(() => {
   // Factor in visible SMAs
   if (showSma50.value) {
     for (const val of sma50Values.value) {
-      if (val !== null) {
+      if (val !== null && val <= maxAllowedUpper && val >= minAllowedLower) {
         if (val < min) min = val
         if (val > max) max = val
       }
@@ -870,7 +896,7 @@ const yBounds = computed(() => {
   }
   if (showSma200.value) {
     for (const val of sma200Values.value) {
-      if (val !== null) {
+      if (val !== null && val <= maxAllowedUpper && val >= minAllowedLower) {
         if (val < min) min = val
         if (val > max) max = val
       }
@@ -883,11 +909,33 @@ const yBounds = computed(() => {
   }
 
   const span = max - min
-  const paddedMin = Math.max(0, min - span * 0.06)
-  const paddedMax = max + span * 0.06
+  const paddedMin = Math.max(0, min - span * 0.08)
+  const paddedMax = max + span * 0.08
 
   return { min: paddedMin, max: paddedMax }
 })
+
+const maxVolume = computed(() => {
+  if (prices.value.length === 0) return 1
+  return Math.max(...prices.value.map(p => p.volume || 0), 1)
+})
+
+const getBarWidth = computed(() => {
+  if (prices.value.length <= 1) return 4
+  const spacing = plotWidth / prices.value.length
+  return Math.max(1, Math.min(spacing * 0.75, 8))
+})
+
+const getVolumeHeight = (vol: number) => {
+  const maxH = plotHeight * 0.18 // 18% of canvas height
+  const ratio = Math.max(0, Math.min(vol / maxVolume.value, 1))
+  return Math.max(2, ratio * maxH)
+}
+
+const getVolumeY = (vol: number) => {
+  const h = getVolumeHeight(vol)
+  return padding.top + plotHeight - h
+}
 
 const getX = (index: number): number => {
   if (prices.value.length <= 1) return padding.left + plotWidth / 2
@@ -989,7 +1037,7 @@ const pbBandCoords = computed(() => {
 // Grid Lines & Ticks
 const yGridLines = computed(() => {
   const { min, max } = yBounds.value
-  const steps = 4
+  const steps = 6
   const lines = []
   for (let i = 0; i <= steps; i++) {
     const val = min + (i / steps) * (max - min)
@@ -1540,7 +1588,8 @@ const formatFullDate = (d?: string | Date) => {
 .chart-stage {
   position: relative;
   width: 100%;
-  height: 320px;
+  height: 480px;
+  min-height: 440px;
 }
 
 .chart-svg {
