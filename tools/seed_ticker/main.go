@@ -351,8 +351,15 @@ func run() error {
 	})
 
 	for i, stmt := range statements {
+		// Find matching YoY prior statement (same period in prior year) for true Piotroski comparison, fallback to previous statement
 		var priorStmt *xbrl.Statement
-		if i > 0 {
+		for j := i - 1; j >= 0; j-- {
+			if statements[j].Period == stmt.Period && statements[j].Year == stmt.Year-1 {
+				priorStmt = statements[j]
+				break
+			}
+		}
+		if priorStmt == nil && i > 0 {
 			priorStmt = statements[i-1]
 		}
 

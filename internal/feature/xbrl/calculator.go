@@ -10,17 +10,22 @@ func ComputeValuationAndRatios(stmt *Statement, priorStmt *Statement, currentSto
 	r := &stmt.ComputedRatios
 	v := &stmt.Valuation
 
+	effectiveNetIncome := c.NetIncome
+	if c.NetIncomeParent != 0 {
+		effectiveNetIncome = c.NetIncomeParent
+	}
+
 	// 1. Profitability & Margins
 	if c.Revenue > 0 {
 		r.GrossMarginPct = (c.GrossProfit / c.Revenue) * 100
 		r.OperatingMarginPct = (c.OperatingIncome / c.Revenue) * 100
-		r.NetMarginPct = (c.NetIncome / c.Revenue) * 100
+		r.NetMarginPct = (effectiveNetIncome / c.Revenue) * 100
 	}
 	if c.TotalEquity > 0 {
-		r.ROE = c.NetIncome / c.TotalEquity
+		r.ROE = effectiveNetIncome / c.TotalEquity
 	}
 	if c.TotalAssets > 0 {
-		r.ROA = c.NetIncome / c.TotalAssets
+		r.ROA = effectiveNetIncome / c.TotalAssets
 	}
 
 	// 2. Return on Invested Capital (ROIC)
@@ -41,8 +46,8 @@ func ComputeValuationAndRatios(stmt *Statement, priorStmt *Statement, currentSto
 	if c.CurrentLiabilities > 0 {
 		r.CurrentRatio = c.CurrentAssets / c.CurrentLiabilities
 	}
-	if c.NetIncome > 0 {
-		r.FCFConversionPct = (c.FreeCashFlow / c.NetIncome) * 100
+	if effectiveNetIncome > 0 {
+		r.FCFConversionPct = (c.FreeCashFlow / effectiveNetIncome) * 100
 	}
 
 	// 4. Emerging Market Altman Z''-Score
@@ -63,14 +68,14 @@ func ComputeValuationAndRatios(stmt *Statement, priorStmt *Statement, currentSto
 	if c.OperatingCashFlow > 0 {
 		fScore++
 	}
-	if c.OperatingCashFlow > c.NetIncome {
+	if c.OperatingCashFlow > effectiveNetIncome {
 		fScore++
 	}
 	if priorStmt != nil {
 		if r.ROA > priorStmt.ComputedRatios.ROA {
 			fScore++
 		}
-		if c.LongTermDebt < priorStmt.Core.LongTermDebt {
+		if c.LongTermDebt < priorStmt.Core.LongTermDebt || (c.LongTermDebt == 0 && priorStmt.Core.LongTermDebt == 0) {
 			fScore++
 		}
 		if r.CurrentRatio > priorStmt.ComputedRatios.CurrentRatio {
@@ -82,12 +87,15 @@ func ComputeValuationAndRatios(stmt *Statement, priorStmt *Statement, currentSto
 		if r.GrossMarginPct > priorStmt.ComputedRatios.GrossMarginPct {
 			fScore++
 		}
-		assetTurnoverCurr := c.Revenue / c.TotalAssets
+		assetTurnoverCurr := 0.0
+		if c.TotalAssets > 0 {
+			assetTurnoverCurr = c.Revenue / c.TotalAssets
+		}
 		assetTurnoverPrior := 0.0
 		if priorStmt.Core.TotalAssets > 0 {
 			assetTurnoverPrior = priorStmt.Core.Revenue / priorStmt.Core.TotalAssets
 		}
-		if assetTurnoverCurr > assetTurnoverPrior {
+		if assetTurnoverCurr > assetTurnoverPrior && assetTurnoverCurr > 0 {
 			fScore++
 		}
 	} else {
@@ -95,7 +103,7 @@ func ComputeValuationAndRatios(stmt *Statement, priorStmt *Statement, currentSto
 		if r.CurrentRatio > 1.2 {
 			fScore++
 		}
-		if r.DebtToEquity < 1.0 {
+		if c.TotalEquity > 0 && r.DebtToEquity < 1.0 {
 			fScore++
 		}
 		if r.GrossMarginPct > 20.0 {
@@ -124,7 +132,7 @@ func ComputeValuationAndRatios(stmt *Statement, priorStmt *Statement, currentSto
 	}
 
 	// If per-share EPS in the XML is scaled by the rounding multiplier (e.g. 0.000340 instead of 340 IDR)
-	if v.NormalizedEPS > 0 && v.NormalizedEPS < 1.0 && multiplier >= 1000 {
+	if v.NormalizedEPS > 0 && v.NormalizedEPS < 1.0 && multiplier >= 1000 && stmt.Metadata.Currency != "USD" {
 		v.NormalizedEPS = v.NormalizedEPS * multiplier
 	}
 
@@ -135,17 +143,22 @@ func ComputeValuationAndRatios(stmt *Statement, priorStmt *Statement, currentSto
 		c.SharesOutstanding = shares
 	}
 
-	if shares <= 1 && v.NormalizedEPS > 0 && c.NetIncome > 0 {
-		shares = (c.NetIncome * fxRate) / v.NormalizedEPS
+	if shares <= 1 && v.NormalizedEPS > 0 && effectiveNetIncome > 0 {
+		shares = effectiveNetIncome / v.NormalizedEPS
 		c.SharesOutstanding = shares
 	}
 	if shares <= 0 {
 		shares = 1.0
 	}
 
+	// If normalized EPS was in USD, normalize to IDR
+	if stmt.Metadata.Currency == "USD" && v.NormalizedEPS > 0 {
+		v.NormalizedEPS = v.NormalizedEPS * fxRate
+	}
+
 	// Normalized per-share values in IDR
 	if v.NormalizedEPS == 0 && shares > 1 {
-		v.NormalizedEPS = (c.NetIncome * fxRate) / shares
+		v.NormalizedEPS = (effectiveNetIncome * fxRate) / shares
 	}
 	if shares > 1 {
 		v.NormalizedBVPS = (c.TotalEquity * fxRate) / shares

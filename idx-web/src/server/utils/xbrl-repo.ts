@@ -28,7 +28,7 @@ export class XBRLStatementRepository {
   async findByTicker(ticker: string, limit: number = 8): Promise<XBRLStatement[]> {
     const docs = await this.collection
       .find({ ticker: ticker.toUpperCase().trim() })
-      .sort({ year: -1, period: -1 })
+      .sort({ year: -1, period_end_date: -1 })
       .limit(limit)
       .toArray()
     return docs.map((d: any) => ({ ...d, id: d._id.toString() }))

@@ -84,7 +84,7 @@ func (r *XBRLRepository) FindByTickerAndPeriod(ctx context.Context, ticker strin
 
 func (r *XBRLRepository) FindHistoricalByTicker(ctx context.Context, ticker string, limit int) ([]*xbrl.Statement, error) {
 	filter := bson.M{"ticker": ticker}
-	opts := options.Find().SetSort(bson.D{{Key: "year", Value: -1}, {Key: "period", Value: -1}}).SetLimit(int64(limit))
+	opts := options.Find().SetSort(bson.D{{Key: "year", Value: -1}, {Key: "period_end_date", Value: -1}}).SetLimit(int64(limit))
 	cursor, err := r.collection.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, err
