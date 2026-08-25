@@ -64,7 +64,35 @@
         </div>
 
         <!-- 1. INSTITUTIONAL 3-COLUMN MATRIX (Stockbit Style) -->
-        <div v-else-if="activeModalTab === 'terminal'" class="matrix-layout">
+        <div v-else-if="activeModalTab === 'terminal'" class="terminal-tab-wrapper font-mono">
+          <!-- Sector Intelligence & Valuation Playbook Card -->
+          <div class="sector-playbook-card">
+            <div class="playbook-top">
+              <div class="playbook-left">
+                <span class="playbook-icon">{{ sectorPlaybook.icon }}</span>
+                <div>
+                  <div class="playbook-title-row">
+                    <span class="playbook-title">Sector Playbook: {{ sectorPlaybook.name }}</span>
+                    <span :class="['playbook-badge', sectorPlaybook.badgeClass]">Valuation Guidance</span>
+                  </div>
+                  <p class="playbook-rule">{{ sectorPlaybook.ruleOfThumb }}</p>
+                </div>
+              </div>
+            </div>
+            <div class="playbook-metrics-grid">
+              <div v-for="(pm, idx) in sectorPlaybook.primaryMetrics" :key="idx" class="playbook-metric-item">
+                <span class="pm-lbl">🎯 {{ pm.label }}:</span>
+                <span class="pm-target text-green">{{ pm.target }}</span>
+                <span class="pm-note">({{ pm.note }})</span>
+              </div>
+              <div v-if="sectorPlaybook.nonApplicable !== 'N/A'" class="playbook-metric-item non-app-item">
+                <span class="pm-lbl text-amber">⚠️ Ignore / N/A:</span>
+                <span class="pm-note text-amber">{{ sectorPlaybook.nonApplicable }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="matrix-layout">
           <!-- LEFT COLUMN: Valuation & Solvency Multiples -->
           <div class="matrix-col">
             <!-- Smart Timing & VSA Signals Card -->
@@ -81,20 +109,41 @@
               </div>
               <div class="data-rows font-mono">
                 <div class="data-row">
-                  <span class="label">RSI (14-Day)</span>
+                  <span class="label has-tooltip">
+                    RSI (14-Day) <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">Relative Strength Index (14-Day)</strong>
+                      <span class="tt-target">🟢 Oversold: &lt; 35 | 🔴 Overbought: &gt; 70</span>
+                      <span class="tt-desc">Measures momentum speed. Oversold + Bullish Divergence marks institutional bottoms.</span>
+                    </span>
+                  </span>
                   <span class="val">
                     {{ latestTimingSignal.rsi ? latestTimingSignal.rsi.toFixed(1) : '-' }}
                     <span v-if="latestTimingSignal.rsi_bullish_divergence" class="badge-bullish-div">BULLISH DIV ⚡</span>
                   </span>
                 </div>
                 <div class="data-row">
-                  <span class="label">VSA Stopping Volume</span>
+                  <span class="label has-tooltip">
+                    VSA Stopping Volume <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">Volume Spread Analysis (Stopping Volume)</strong>
+                      <span class="tt-target">Target: RVOL ≥ 1.8x on Down Day + High CLV</span>
+                      <span class="tt-desc">Detects Smart Money absorbing panic supply on heavy volume.</span>
+                    </span>
+                  </span>
                   <span :class="['val', latestTimingSignal.stopping_volume ? 'text-green font-bold' : '']">
                     {{ latestTimingSignal.stopping_volume ? 'DETECTED 🛡️' : 'None' }}
                   </span>
                 </div>
                 <div class="data-row">
-                  <span class="label">Volume Dry-Up (VDU)</span>
+                  <span class="label has-tooltip">
+                    Volume Dry-Up (VDU) <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">Volume Dry-Up (VDU)</strong>
+                      <span class="tt-target">Target: 5-Day Volume ≤ 50% of 20-Day SMA</span>
+                      <span class="tt-desc">Supply exhaustion indicator. Sellers have finished liquidating.</span>
+                    </span>
+                  </span>
                   <span :class="['val', latestTimingSignal.volume_dry_up ? 'text-amber font-bold' : '']">
                     {{ latestTimingSignal.vdu ? latestTimingSignal.vdu.toFixed(2) + 'x' : '-' }}
                     <span v-if="latestTimingSignal.volume_dry_up" class="badge-vdu">DRY-UP 💧</span>
@@ -127,39 +176,111 @@
               <h3 class="card-heading">Current Valuation</h3>
               <div class="data-rows">
                 <div class="data-row">
-                  <span class="label">Current PE Ratio (TTM)</span>
+                  <span class="label has-tooltip">
+                    Current PE Ratio (TTM) <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">P/E Ratio (Price to Earnings)</strong>
+                      <span class="tt-formula">Formula: Price / Normalized EPS</span>
+                      <span class="tt-target">🟢 Deep Value: ≤ 10x | Fair: 12x - 15x | 🔴 Expensive: &gt; 20x</span>
+                      <span class="tt-desc">How many IDR you pay for each IDR of net earnings.</span>
+                    </span>
+                  </span>
                   <span class="val font-mono">{{ formatMultiple(latestStatement?.valuation?.pe_ratio) }}</span>
                 </div>
                 <div class="data-row">
-                  <span class="label">Price to Book Value</span>
+                  <span class="label has-tooltip">
+                    Price to Book Value <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">P/B Ratio (Price to Book Value)</strong>
+                      <span class="tt-formula">Formula: Price / Normalized BVPS</span>
+                      <span class="tt-target">🟢 Undervalued: ≤ 1.2x | Banks (ROE ≥ 18%): ≤ 2.2x</span>
+                      <span class="tt-desc">Compares market capitalization to net tangible equity value.</span>
+                    </span>
+                  </span>
                   <span class="val font-mono">{{ formatMultiple(latestStatement?.valuation?.pb_ratio) }}</span>
                 </div>
                 <div class="data-row">
-                  <span class="label">Price to Sales (TTM)</span>
+                  <span class="label has-tooltip">
+                    Price to Sales (TTM) <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">P/S Ratio (Price to Sales)</strong>
+                      <span class="tt-formula">Formula: Price / Revenue Per Share</span>
+                      <span class="tt-target">Target: ≤ 1.5x - 2.0x</span>
+                      <span class="tt-desc">Evaluates top-line revenue valuation free of non-cash accrual items.</span>
+                    </span>
+                  </span>
                   <span class="val font-mono">{{ formatMultiple(latestStatement?.valuation?.ps_ratio) }}</span>
                 </div>
                 <div class="data-row">
-                  <span class="label">Price to Free Cashflow (TTM)</span>
+                  <span class="label has-tooltip">
+                    Price to Free Cashflow (TTM) <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">P/FCF Ratio (Price to Free Cash Flow)</strong>
+                      <span class="tt-formula">Formula: Price / FCF Per Share</span>
+                      <span class="tt-target">Target: ≤ 12x - 15x (FCF Yield ≥ 7-8%)</span>
+                      <span class="tt-desc">Valuation against actual liquid cash generated after all CapEx.</span>
+                    </span>
+                  </span>
                   <span class="val font-mono">{{ formatMultiple(latestStatement?.valuation?.p_fcf_ratio) }}</span>
                 </div>
                 <div class="data-row">
-                  <span class="label">Earnings Yield (TTM)</span>
+                  <span class="label has-tooltip">
+                    Earnings Yield (TTM) <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">Earnings Yield %</strong>
+                      <span class="tt-formula">Formula: (EPS / Price) * 100</span>
+                      <span class="tt-target">Target: ≥ 8.0% (Beating 6.8% Sukuk Risk-Free Rate)</span>
+                      <span class="tt-desc">Annual percentage return on investment if all earnings were distributed.</span>
+                    </span>
+                  </span>
                   <span class="val font-mono text-green">{{ formatPct(latestStatement?.valuation?.earnings_yield_pct) }}</span>
                 </div>
                 <div class="data-row">
-                  <span class="label">EV to EBIT (TTM)</span>
+                  <span class="label has-tooltip">
+                    EV to EBIT (TTM) <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">EV / EBIT</strong>
+                      <span class="tt-formula">Formula: Enterprise Value / Operating Profit</span>
+                      <span class="tt-target">Target: ≤ 8.0x - 10.0x</span>
+                      <span class="tt-desc">Debt-neutral valuation multiple comparing entire firm value to operating profit.</span>
+                    </span>
+                  </span>
                   <span class="val font-mono">{{ formatMultiple(latestStatement?.valuation?.ev_to_ebit) }}</span>
                 </div>
                 <div class="data-row">
-                  <span class="label">EV to EBITDA (TTM)</span>
+                  <span class="label has-tooltip">
+                    EV to EBITDA (TTM) <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">EV / EBITDA</strong>
+                      <span class="tt-formula">Formula: Enterprise Value / EBITDA</span>
+                      <span class="tt-target">Target: ≤ 5.0x - 7.0x (Commodities: ≤ 4.5x)</span>
+                      <span class="tt-desc">Cash operating multiple favored by private equity and M&A desks.</span>
+                    </span>
+                  </span>
                   <span class="val font-mono">{{ formatMultiple(latestStatement?.valuation?.ev_to_ebitda) }}</span>
                 </div>
                 <div class="data-row">
-                  <span class="label">Graham Number</span>
+                  <span class="label has-tooltip">
+                    Graham Number <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">Benjamin Graham Fair Value</strong>
+                      <span class="tt-formula">Formula: sqrt(22.5 * NormalizedEPS * NormalizedBVPS)</span>
+                      <span class="tt-target">Target: Buy below Graham FV (MOS ≥ 30%)</span>
+                      <span class="tt-desc">The maximum conservative fair price a defensive investor should pay.</span>
+                    </span>
+                  </span>
                   <span class="val font-mono text-green">{{ formatIDRPrice(latestStatement?.valuation?.graham_number) }}</span>
                 </div>
                 <div class="data-row highlight-row">
-                  <span class="label">Margin of Safety</span>
+                  <span class="label has-tooltip">
+                    Margin of Safety <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">Margin of Safety (MOS %)</strong>
+                      <span class="tt-formula">Formula: ((Graham FV - Price) / Graham FV) * 100</span>
+                      <span class="tt-target">🟢 Deep MoS: ≥ 30% | 🟡 Discount: &gt; 0% | 🔴 Premium: &lt; 0%</span>
+                      <span class="tt-desc">Discount percentage relative to intrinsic Graham Number.</span>
+                    </span>
+                  </span>
                   <span :class="['val font-mono', (latestStatement?.valuation?.margin_of_safety_pct || 0) > 0 ? 'text-green' : 'text-red']">
                     {{ formatSignedPct(latestStatement?.valuation?.margin_of_safety_pct) }}
                   </span>
@@ -211,11 +332,25 @@
               <h3 class="card-heading">Solvency & Health</h3>
               <div class="data-rows">
                 <div class="data-row">
-                  <span class="label">Piotroski F-Score</span>
+                  <span class="label has-tooltip">
+                    Piotroski F-Score <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">Piotroski F-Score (0 to 9)</strong>
+                      <span class="tt-target">🟢 Strong Health: 8-9 | 🟡 Moderate: 5-7 | 🔴 Weak/Trap: 0-4</span>
+                      <span class="tt-desc">9 discrete tests evaluating profitability, leverage/liquidity, and operating efficiency.</span>
+                    </span>
+                  </span>
                   <span class="val font-mono text-cyan">{{ latestStatement?.computed_ratios?.piotroski_f_score || 0 }}/9</span>
                 </div>
                 <div class="data-row">
-                  <span class="label">Altman Z''-Score</span>
+                  <span class="label has-tooltip">
+                    Altman Z''-Score <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">Emerging Market Altman Z''-Score</strong>
+                      <span class="tt-target">🟢 Safe: &gt; 2.60 | 🟡 Grey: 1.10 - 2.60 | 🔴 Distress: &lt; 1.10</span>
+                      <span class="tt-desc">Evaluates insolvency and bankruptcy risk. Non-applicable to deposit-taking banks.</span>
+                    </span>
+                  </span>
                   <span v-if="!isFinancialSector" :class="['val font-mono', (latestStatement?.computed_ratios?.altman_z_score || 0) > 2.6 ? 'text-green' : 'text-amber']">
                     {{ (latestStatement?.computed_ratios?.altman_z_score || 0).toFixed(2) }}
                   </span>
@@ -224,17 +359,41 @@
                   </span>
                 </div>
                 <div class="data-row">
-                  <span class="label">Current Ratio</span>
+                  <span class="label has-tooltip">
+                    Current Ratio <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">Current Ratio</strong>
+                      <span class="tt-formula">Formula: Current Assets / Current Liabilities</span>
+                      <span class="tt-target">Target: ≥ 1.5x - 2.0x (N/A for Banks)</span>
+                      <span class="tt-desc">Ability to settle short-term debts with liquid current assets.</span>
+                    </span>
+                  </span>
                   <span v-if="!isFinancialSector" class="val font-mono">{{ (latestStatement?.computed_ratios?.current_ratio || 0).toFixed(2) }}x</span>
                   <span v-else class="val font-mono text-secondary" title="Commercial banks do not classify balance sheets into current assets/liabilities">N/A (Banking)</span>
                 </div>
                 <div class="data-row">
-                  <span class="label">Debt to Equity</span>
+                  <span class="label has-tooltip">
+                    Debt to Equity <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">Debt to Equity Ratio (D/E)</strong>
+                      <span class="tt-formula">Formula: Total Debt / Total Equity</span>
+                      <span class="tt-target">Target: ≤ 0.5x - 0.8x (N/A for Banks)</span>
+                      <span class="tt-desc">Financial leverage burden relative to shareholder net equity.</span>
+                    </span>
+                  </span>
                   <span v-if="!isFinancialSector" class="val font-mono">{{ (latestStatement?.computed_ratios?.debt_to_equity || 0).toFixed(2) }}x</span>
                   <span v-else class="val font-mono text-secondary" title="Bank liabilities consist of customer deposits (DPK)">N/A (Deposits)</span>
                 </div>
                 <div class="data-row">
-                  <span class="label">Interest Coverage</span>
+                  <span class="label has-tooltip">
+                    Interest Coverage <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">Interest Coverage Ratio</strong>
+                      <span class="tt-formula">Formula: Operating Income / Finance Costs</span>
+                      <span class="tt-target">Target: ≥ 3.5x - 5.0x</span>
+                      <span class="tt-desc">How comfortably operating income covers interest obligations.</span>
+                    </span>
+                  </span>
                   <span v-if="!isFinancialSector" class="val font-mono">{{ (latestStatement?.computed_ratios?.interest_coverage_ratio || 0).toFixed(2) }}x</span>
                   <span v-else class="val font-mono text-secondary">N/A (Banking)</span>
                 </div>
@@ -343,23 +502,63 @@
                 <h3 class="card-heading">Profitability</h3>
                 <div class="data-rows">
                   <div class="data-row">
-                    <span class="label">Return on Invested Capital (ROIC)</span>
+                    <span class="label has-tooltip">
+                      Return on Invested Capital (ROIC) <span class="info-dot">ℹ️</span>
+                      <span class="tooltip-bubble">
+                        <strong class="tt-title">ROIC (Return on Invested Capital)</strong>
+                        <span class="tt-formula">Formula: NOPAT / Invested Capital</span>
+                        <span class="tt-target">🟢 Moat Hurdle: ≥ 15% | 💎 Elite: ≥ 20% | 🔴 Weak: &lt; 10%</span>
+                        <span class="tt-desc">Measures true operating efficiency above the 11.5% Indonesian WACC cost of capital.</span>
+                      </span>
+                    </span>
                     <span class="val font-mono text-green">{{ formatPct((latestStatement?.computed_ratios?.roic || 0) * 100) }}</span>
                   </div>
                   <div class="data-row">
-                    <span class="label">Return on Equity (ROE)</span>
+                    <span class="label has-tooltip">
+                      Return on Equity (ROE) <span class="info-dot">ℹ️</span>
+                      <span class="tooltip-bubble">
+                        <strong class="tt-title">ROE (Return on Equity)</strong>
+                        <span class="tt-formula">Formula: Net Income / Total Equity</span>
+                        <span class="tt-target">🟢 Good: ≥ 15.0% | Banks: ≥ 17.0% - 19.0%</span>
+                        <span class="tt-desc">Profit generated per IDR of common shareholder equity capital.</span>
+                      </span>
+                    </span>
                     <span class="val font-mono text-green">{{ formatPct((latestStatement?.computed_ratios?.roe || 0) * 100) }}</span>
                   </div>
                   <div class="data-row">
-                    <span class="label">Gross Profit Margin</span>
+                    <span class="label has-tooltip">
+                      Gross Profit Margin <span class="info-dot">ℹ️</span>
+                      <span class="tooltip-bubble">
+                        <strong class="tt-title">Gross Profit Margin %</strong>
+                        <span class="tt-formula">Formula: (Gross Profit / Revenue) * 100</span>
+                        <span class="tt-target">Target: Pricing Power ≥ 35% - 50% (Sector Dependent)</span>
+                        <span class="tt-desc">Profit retained after direct production costs. Tests structural pricing power.</span>
+                      </span>
+                    </span>
                     <span class="val font-mono">{{ formatPct(latestStatement?.computed_ratios?.gross_margin_pct) }}</span>
                   </div>
                   <div class="data-row">
-                    <span class="label">Operating Profit Margin</span>
+                    <span class="label has-tooltip">
+                      Operating Profit Margin <span class="info-dot">ℹ️</span>
+                      <span class="tooltip-bubble">
+                        <strong class="tt-title">Operating Profit Margin %</strong>
+                        <span class="tt-formula">Formula: (Operating Income / Revenue) * 100</span>
+                        <span class="tt-target">Target: ≥ 15% - 25%</span>
+                        <span class="tt-desc">Operational profitability before taxes and financing costs.</span>
+                      </span>
+                    </span>
                     <span class="val font-mono">{{ formatPct(latestStatement?.computed_ratios?.operating_margin_pct) }}</span>
                   </div>
                   <div class="data-row">
-                    <span class="label">Net Profit Margin</span>
+                    <span class="label has-tooltip">
+                      Net Profit Margin <span class="info-dot">ℹ️</span>
+                      <span class="tooltip-bubble">
+                        <strong class="tt-title">Net Profit Margin %</strong>
+                        <span class="tt-formula">Formula: (Net Income / Revenue) * 100</span>
+                        <span class="tt-target">Target: ≥ 10% - 15%</span>
+                        <span class="tt-desc">Bottom-line net profit retained per IDR of total sales.</span>
+                      </span>
+                    </span>
                     <span class="val font-mono">{{ formatPct(latestStatement?.computed_ratios?.net_margin_pct) }}</span>
                   </div>
                 </div>
@@ -369,15 +568,37 @@
                 <h3 class="card-heading">Cash Flow & Capital Allocation</h3>
                 <div class="data-rows">
                   <div class="data-row">
-                    <span class="label">Cash from Operations (CFO)</span>
+                    <span class="label has-tooltip">
+                      Cash from Operations (CFO) <span class="info-dot">ℹ️</span>
+                      <span class="tooltip-bubble">
+                        <strong class="tt-title">Operating Cash Flow (CFO)</strong>
+                        <span class="tt-target">Healthy: CFO &gt; Net Income</span>
+                        <span class="tt-desc">Actual cash received from core customer operations before capital expenditures.</span>
+                      </span>
+                    </span>
                     <span class="val font-mono text-green">{{ formatCompact(latestStatement?.core?.operating_cash_flow) }}</span>
                   </div>
                   <div class="data-row">
-                    <span class="label">Capital Expenditure (CapEx)</span>
+                    <span class="label has-tooltip">
+                      Capital Expenditure (CapEx) <span class="info-dot">ℹ️</span>
+                      <span class="tooltip-bubble">
+                        <strong class="tt-title">Capital Expenditure (CapEx)</strong>
+                        <span class="tt-target">Reinvestment: CapEx / CFO ≤ 50% - 60%</span>
+                        <span class="tt-desc">Cash spent acquiring and maintaining physical productive property, plant, and equipment.</span>
+                      </span>
+                    </span>
                     <span class="val font-mono text-amber">{{ formatCompact(latestStatement?.core?.capex) }}</span>
                   </div>
                   <div class="data-row">
-                    <span class="label">Free Cash Flow (FCF)</span>
+                    <span class="label has-tooltip">
+                      Free Cash Flow (FCF) <span class="info-dot">ℹ️</span>
+                      <span class="tooltip-bubble">
+                        <strong class="tt-title">Free Cash Flow (Owner Earnings)</strong>
+                        <span class="tt-formula">Formula: CFO - CapEx</span>
+                        <span class="tt-target">🟢 FCF / Net Income ≥ 80%</span>
+                        <span class="tt-desc">Pure surplus cash available for dividends, debt reduction, or high-ROIC expansion.</span>
+                      </span>
+                    </span>
                     <span class="val font-mono text-green">{{ formatCompact(latestStatement?.core?.free_cash_flow) }}</span>
                   </div>
                   <div class="data-row">
@@ -472,9 +693,37 @@
             </div>
           </div>
         </div>
+        </div>
 
         <!-- 2. 5-YEAR MOAT & QUALITY RADAR VIEW TAB -->
         <div v-else-if="activeModalTab === 'moat'" class="moat-radar-tab font-mono">
+          <!-- Sector Intelligence & Valuation Playbook Card -->
+          <div class="sector-playbook-card">
+            <div class="playbook-top">
+              <div class="playbook-left">
+                <span class="playbook-icon">{{ sectorPlaybook.icon }}</span>
+                <div>
+                  <div class="playbook-title-row">
+                    <span class="playbook-title">Sector Playbook: {{ sectorPlaybook.name }}</span>
+                    <span :class="['playbook-badge', sectorPlaybook.badgeClass]">Valuation Guidance</span>
+                  </div>
+                  <p class="playbook-rule">{{ sectorPlaybook.ruleOfThumb }}</p>
+                </div>
+              </div>
+            </div>
+            <div class="playbook-metrics-grid">
+              <div v-for="(pm, idx) in sectorPlaybook.primaryMetrics" :key="idx" class="playbook-metric-item">
+                <span class="pm-lbl">🎯 {{ pm.label }}:</span>
+                <span class="pm-target text-green">{{ pm.target }}</span>
+                <span class="pm-note">({{ pm.note }})</span>
+              </div>
+              <div v-if="sectorPlaybook.nonApplicable !== 'N/A'" class="playbook-metric-item non-app-item">
+                <span class="pm-lbl text-amber">⚠️ Ignore / N/A:</span>
+                <span class="pm-note text-amber">{{ sectorPlaybook.nonApplicable }}</span>
+              </div>
+            </div>
+          </div>
+
           <!-- Top Executive Summary KPI Cards -->
           <div class="moat-kpi-grid">
             <!-- 1. 5-Year Average ROIC -->
@@ -1320,6 +1569,112 @@ const cashFlowVerdict = computed(() => {
     return { title: '🟡 Moderate Cash Flow Conversion', class: 'text-amber' }
   }
   return { title: '🔴 Working Capital Drag / Heavy CapEx', class: 'text-red' }
+})
+
+const sectorPlaybook = computed(() => {
+  const s = latestStatement.value?.metadata?.sector?.toLowerCase() || ''
+  const ind = latestStatement.value?.metadata?.industry?.toLowerCase() || ''
+
+  if (s.includes('financial') || s.includes('finance') || ind.includes('bank') || ind.includes('insurance')) {
+    return {
+      name: 'Financials & Commercial Banking',
+      icon: '🏛️',
+      badgeClass: 'pill-cyan',
+      primaryMetrics: [
+        { label: 'ROE', target: '≥ 15% - 18%', note: 'Core profitability benchmark' },
+        { label: 'ROA', target: '≥ 2.0% - 3.0%', note: 'Asset utilization on loan portfolio' },
+        { label: 'P/B Multiples', target: '≤ 2.0x - 2.5x', note: 'Price relative to book value' },
+        { label: 'Graham Floor', target: 'Close to Price', note: 'Intrinsic equity asset floor' }
+      ],
+      nonApplicable: 'Current Ratio, Working Capital, Altman Z (Deposit-Funded Balance Sheet)',
+      ruleOfThumb: 'In banking, customer deposits (DPK) are the leverage. Look for sustained ROE > 15%, low NPL (< 3%), and strong dividend yield (5-7%). Ignore working capital and Altman Z distress flags.',
+      goodBenchmark: 'ROE ≥ 15%, ROA ≥ 2.0%, P/B ≤ 2.2x relative to ROE'
+    }
+  }
+
+  if (s.includes('energy') || ind.includes('coal') || ind.includes('oil') || ind.includes('gas') || ind.includes('mining')) {
+    return {
+      name: 'Energy & Commodity Production',
+      icon: '⚡',
+      badgeClass: 'pill-amber',
+      primaryMetrics: [
+        { label: '5Y Cycle ROIC', target: '≥ 15% avg', note: 'Normalized across commodity cycle' },
+        { label: 'Net Cash', target: 'Cash > Total Debt', note: 'Essential to survive commodity troughs' },
+        { label: 'FCF Yield', target: '≥ 10% - 15%', note: 'High cash flow generation' },
+        { label: 'EV/EBITDA', target: '≤ 4.0x - 6.0x', note: 'Enterprise valuation multiple' }
+      ],
+      nonApplicable: 'Peak Single-Year P/E (Commodity Cyclicality Trap)',
+      ruleOfThumb: 'Commodity producers are price-takers. Never buy at peak cycle low P/E. Look for zero net debt (Net Cash), lowest-quartile cash cost per ton, and 5-year average ROIC > 15% through down-cycles.',
+      goodBenchmark: '5Y Avg ROIC ≥ 15%, Debt/Equity ≤ 0.5x, Net Cash Positive'
+    }
+  }
+
+  if (s.includes('consumer non') || ind.includes('fmcg') || ind.includes('food') || ind.includes('beverage') || ind.includes('tobacco') || ind.includes('personal')) {
+    return {
+      name: 'Consumer Non-Cyclicals & FMCG',
+      icon: '🛒',
+      badgeClass: 'pill-green',
+      primaryMetrics: [
+        { label: 'ROIC', target: '≥ 20% - 30%', note: 'High capital compounder' },
+        { label: 'Gross Margin', target: '≥ 30% - 45%', note: 'Brand pricing power' },
+        { label: 'FCF Conversion', target: '≥ 80% - 100%', note: 'Pristine cash earnings' },
+        { label: 'Debt to Equity', target: '≤ 0.5x - 0.8x', note: 'Conservative balance sheet' }
+      ],
+      nonApplicable: 'Heavy Asset Turnover dependencies',
+      ruleOfThumb: 'FMCG compounders possess durable brand pricing power and distribution moats. Target high ROIC (> 20%), stable gross margins during inflation, and FCF conversion > 80%.',
+      goodBenchmark: 'ROIC ≥ 20%, Gross Margin ≥ 35%, FCF/NI ≥ 80%'
+    }
+  }
+
+  if (s.includes('infrastructure') || ind.includes('telecom') || ind.includes('tower') || ind.includes('toll') || ind.includes('utility')) {
+    return {
+      name: 'Infrastructure & Telecommunications',
+      icon: '📡',
+      badgeClass: 'pill-cyan',
+      primaryMetrics: [
+        { label: 'ROIC', target: '≥ 12% - 16%', note: 'Capital intensive threshold' },
+        { label: 'CapEx / CFO', target: '≤ 50% - 65%', note: 'Reinvestment sustainability' },
+        { label: 'Interest Coverage', target: '≥ 3.5x - 5.0x', note: 'Debt service safety' },
+        { label: 'Operating Margin', target: '≥ 25% - 35%', note: 'High operating leverage' }
+      ],
+      nonApplicable: 'Ultra-high asset turnover (Capital Intensive by nature)',
+      ruleOfThumb: 'Infrastructure businesses require heavy initial CapEx but generate annuity-like sticky cash flows. Focus on Interest Coverage > 3.5x, sustainable CapEx reinvestment, and strong free cash flow yield.',
+      goodBenchmark: 'ROIC ≥ 12%, Interest Coverage ≥ 4.0x, CapEx/CFO ≤ 60%'
+    }
+  }
+
+  if (s.includes('healthcare') || ind.includes('pharma') || ind.includes('hospital')) {
+    return {
+      name: 'Healthcare & Pharmaceuticals',
+      icon: '🏥',
+      badgeClass: 'pill-green',
+      primaryMetrics: [
+        { label: 'ROIC', target: '≥ 18% - 25%', note: 'High return on capital' },
+        { label: 'Gross Margin', target: '≥ 45% - 60%', note: 'Proprietary product margin' },
+        { label: 'Piotroski Score', target: '≥ 7/9', note: 'Operational trend health' },
+        { label: 'Altman Z', target: '> 3.0 Safe', note: 'Pristine solvency' }
+      ],
+      nonApplicable: 'Commodity cycles',
+      ruleOfThumb: 'Healthcare compounders benefit from demographic tailwinds and inelastic demand. Look for gross margins > 45%, high ROIC, and low debt-to-equity.',
+      goodBenchmark: 'ROIC ≥ 18%, Gross Margin ≥ 45%, Altman Z > 2.6'
+    }
+  }
+
+  // Default / General Industrials & Commercials
+  return {
+    name: 'Industrial & Commercial Corporations',
+    icon: '🏭',
+    badgeClass: 'pill-cyan',
+    primaryMetrics: [
+      { label: 'ROIC', target: '≥ 15.0%', note: 'Above 11.5% Indonesian WACC' },
+      { label: 'FCF / Net Income', target: '≥ 80.0%', note: 'Real cash backing' },
+      { label: 'Altman Z\'\'-Score', target: '> 2.60 Safe', note: 'Low bankruptcy risk' },
+      { label: 'Margin of Safety', target: '≥ 30.0%', note: 'Discount to Graham Fair Value' }
+    ],
+    nonApplicable: 'N/A',
+    ruleOfThumb: 'Standard value investing framework: Look for sustained 5-year ROIC > 15%, positive FCF, safe Altman Z > 2.6, and a 30%+ discount to Benjamin Graham Fair Value.',
+    goodBenchmark: 'ROIC ≥ 15%, Altman Z > 2.6, Piotroski ≥ 7, MOS ≥ 30%'
+  }
 })
 
 const pricingPowerVerdict = computed(() => {
@@ -2178,6 +2533,155 @@ watch(activeModalTab, (tab) => {
   color: var(--text-secondary);
   line-height: 1.35;
 }
+/* Sector Intelligence Playbook Card */
+.terminal-tab-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.sector-playbook-card {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 8px;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.playbook-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.playbook-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.playbook-icon {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+.playbook-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.playbook-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+.playbook-badge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.playbook-rule {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+.playbook-metrics-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+}
+.playbook-metric-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.playbook-metric-item.non-app-item {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+.pm-lbl {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.pm-target {
+  font-weight: 700;
+}
+.pm-note {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+/* Interactive Hover Tooltips */
+.has-tooltip {
+  position: relative;
+  cursor: help;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.info-dot {
+  font-size: 0.68rem;
+  color: #38bdf8;
+  opacity: 0.7;
+}
+.tooltip-bubble {
+  visibility: hidden;
+  opacity: 0;
+  position: absolute;
+  bottom: 125%;
+  left: 0;
+  background: #0f172a;
+  border: 1px solid #334155;
+  color: #f8fafc;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  white-space: normal;
+  width: 250px;
+  z-index: 100;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.75);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: opacity 0.15s ease-in-out, visibility 0.15s ease-in-out;
+  pointer-events: none;
+  text-align: left;
+}
+.has-tooltip:hover .tooltip-bubble {
+  visibility: visible;
+  opacity: 1;
+}
+.tt-title {
+  color: #38bdf8;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 3px;
+  margin-bottom: 2px;
+}
+.tt-formula {
+  color: #94a3b8;
+  font-size: 0.68rem;
+  font-style: italic;
+}
+.tt-target {
+  color: #34d399;
+  font-weight: 600;
+  font-size: 0.7rem;
+}
+.tt-desc {
+  color: #cbd5e1;
+  font-size: 0.7rem;
+  line-height: 1.3;
+}
+
 @media (max-width: 1200px) {
   .moat-kpi-grid {
     grid-template-columns: repeat(2, 1fr);
