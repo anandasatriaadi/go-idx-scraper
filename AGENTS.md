@@ -167,6 +167,9 @@ go-idx-scraper/
 - **NO Chi/Gin/Fiber Routers** in Go.
 - **NO Hardcoded Credentials or Paths**: Use `config/config.yml` or CLI flags.
 - **NO Goroutines without Context Cancellation**: Always tie goroutines to `ctx.Done()`.
+- **NO Double-Conversion of Foreign Currency**: Never multiply already-converted IDR EPS/BVPS by FX rates again.
+- **NO Unadjusted Pre-Split Multi-Year Per-Share Metrics**: Always apply stock-split normalization across historical statement series.
+- **NO Silent Zero Operating Income**: Always apply fallback taxonomy mapping (`ProfitLossBeforeIncomeTax + FinanceCosts`).
 
 ---
 
@@ -587,7 +590,46 @@ FIREBASE_CREDENTIALS_PATH=
 
 ---
 
-## 12. Commit & Contribution Guidelines
+## 12. Financial Valuation, Foreign Currency & Stock Split Integrity Rules
+
+To guarantee mathematical correctness and prevent data distortions, all AI agents and human engineers must adhere strictly to these quantitative rules:
+
+### Rule 1: Single-Pass Foreign Currency (USD) Normalization
+1. When parsing USD-denominated filings (`s.Metadata.Currency == "USD"`), extract `ConversionRate`. If written in Indonesian dot notation (e.g. `16.680` parsed as `16.68`), multiply by $1,000$ (`if rate > 0 && rate < 1000 { rate *= 1000 }`).
+2. `NormalizedEPS` and `NormalizedBVPS` must be converted to IDR **exactly once**:
+   $$\text{NormalizedEPS}_{\text{IDR}} = \text{NormalizedEPS}_{\text{USD}} \times \text{ConversionRate}$$
+   $$\text{NormalizedBVPS}_{\text{IDR}} = \frac{\text{Total Equity} \times \text{ConversionRate}}{\text{Shares Outstanding}}$$
+3. Never multiply an already IDR-normalized per-share metric by the exchange rate a second time.
+4. The Benjamin Graham Number $\sqrt{22.5 \times \text{EPS}_{\text{IDR}} \times \text{BVPS}_{\text{IDR}}}$ must always evaluate in nominal IDR space to directly match IDX market stock prices.
+
+### Rule 2: Stock Split Adjustment Across Multi-Year Time Horizons
+1. Yahoo Finance daily price time series are retroactively **split-adjusted**.
+2. When ingesting multi-year historical statements across a corporate stock split (e.g. `DSSA` 1:10 split in 2024, `BBCA` 1:5 split in 2021, `BBRI` 1:5 split in 2017), the engine must call `ApplyStockSplitAdjustment(statements)`:
+   $$\text{Split Ratio}_t = \frac{\text{Shares Outstanding}_{\text{latest}}}{\text{Shares Outstanding}_t}$$
+   $$\text{Adjusted EPS}_t = \frac{\text{Net Income}_t \times \text{FX}_t}{\text{Shares Outstanding}_{\text{latest}}}$$
+   $$\text{Adjusted BVPS}_t = \frac{\text{Total Equity}_t \times \text{FX}_t}{\text{Shares Outstanding}_{\text{latest}}}$$
+   $$\text{Adjusted Graham Number}_t = \sqrt{22.5 \times \text{Adjusted EPS}_t \times \text{Adjusted BVPS}_t}$$
+3. Financial statement totals (Revenue, Net Income, Total Equity, Free Cash Flow) and core percentage ratios (**ROIC, ROE, Gross Margin, Operating Margin, Piotroski F-Score, Altman Z''-Score**) are **immutable** and must **never** be divided by split ratios.
+
+### Rule 3: Operating Income (EBIT) Taxonomy & Sector Fallback Guarantees
+1. Certain issuers (e.g. mining, energy, conglomerates) do not use standard `idx-cor:OperatingIncome` tags.
+2. In `assignCoreMetric` and `finalizeCoreFinancials`, always apply cascading fallbacks:
+   $$\text{Operating Income (EBIT)} = \text{OperatingIncome} \lor (\text{ProfitLossBeforeIncomeTax} + \text{FinanceCosts}) \lor (\text{NetIncome} + \text{FinanceCosts})$$
+3. Never allow `OperatingIncome` or `ROIC` to default silently to $0.00$ when Gross Profit or Pre-Tax Income is positive.
+
+### Rule 4: Parent Entity Net Income Prioritization
+1. Always prioritize `ProfitLossAttributableToOwnersOfParentEntity` (`NetIncomeParent`) over total consolidated `ProfitLoss` when computing EPS, ROE, and equity valuation to prevent distorting shareholder equity in conglomerates with heavy non-controlling interests.
+
+### Rule 5: Zero-Debt & Positive Equity Piotroski Scoring
+1. In Piotroski Criterion 5 (Long-Term Debt), zero-debt balance sheets ($0 \le 0$) must be awarded the +1 point for pristine solvency.
+2. Never award baseline debt credit to insolvent firms with negative total equity.
+
+### Rule 6: Chronological Sequence & Period Sorting
+1. MongoDB repositories and Nitro API handlers must sort statements by `{ year: -1, period_end_date: -1 }` (not alphabetical `period: -1`) to ensure audited annual statements (`12-31`) sort before interim quarters (`09-30`, `06-30`, `03-31`).
+
+---
+
+## 13. Commit & Contribution Guidelines
 
 - Use conventional imperative commit messages:
   - `feat(prices): ...`
@@ -600,3 +642,4 @@ FIREBASE_CREDENTIALS_PATH=
 - Verify all Go test suites (`make test`) and static analysis (`make vet`) pass before submitting.
 - Verify all Go binaries compile cleanly via `make build`.
 - Verify Nuxt 4 production build passes via `make web-build`.
+- Run regression unit tests covering multi-currency and stock-split tickers (`TestParseInstanceXML_DSSA`, `TestApplyStockSplitAdjustment_DSSA_10to1`, `TestCalculator_USDEPSNormalization`, `TestCalculator_ZeroDebtAndParentNetIncome`).
