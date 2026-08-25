@@ -31,7 +31,8 @@ export class XBRLStatementRepository {
       .sort({ year: -1, period_end_date: -1 })
       .limit(limit)
       .toArray()
-    return docs.map((d: any) => ({ ...d, id: d._id.toString() }))
+    const stmts = docs.map((d: any) => ({ ...d, id: d._id.toString() }))
+    return adjustStatementsForStockSplits(stmts)
   }
 
   async findValueScreener(filters: ValueScreenerFilters): Promise<{ statements: XBRLStatement[]; total: number }> {
@@ -87,4 +88,53 @@ export class XBRLStatementRepository {
       total
     }
   }
+}
+
+export function adjustStatementsForStockSplits(statements: XBRLStatement[]): XBRLStatement[] {
+  if (!statements || statements.length < 2) return statements
+
+  // Latest statement is at index 0 (sorted year desc, period_end_date desc)
+  const latestShares = statements[0]?.core?.shares_outstanding || 0
+  if (latestShares <= 1000) return statements
+
+  for (let i = 1; i < statements.length; i++) {
+    const s = statements[i]
+    const curShares = s.core?.shares_outstanding || 0
+    if (curShares <= 1) continue
+
+    const ratio = latestShares / curShares
+    if (ratio >= 1.8 || ratio <= 0.55) {
+      const fxRate = (s.metadata?.currency === 'USD')
+        ? (s.metadata?.conversion_rate && s.metadata.conversion_rate >= 1000 ? s.metadata.conversion_rate : (s.metadata?.conversion_rate ? s.metadata.conversion_rate * 1000 : 16000))
+        : 1.0
+
+      const netIncome = s.core?.net_income_parent || s.core?.net_income || 0
+      const totalEquity = s.core?.total_equity || 0
+      const revenue = s.core?.revenue || 0
+      const cash = s.core?.cash_and_equivalents || 0
+      const fcf = s.core?.free_cash_flow || 0
+
+      const adjEps = (netIncome * fxRate) / latestShares
+      const adjBvps = (totalEquity * fxRate) / latestShares
+      const adjRevPerShare = (revenue * fxRate) / latestShares
+      const adjCashPerShare = (cash * fxRate) / latestShares
+      const adjFcfPerShare = (fcf * fxRate) / latestShares
+
+      let adjGraham = 0
+      if (adjEps > 0 && adjBvps > 0) {
+        adjGraham = Math.sqrt(22.5 * adjEps * adjBvps)
+      }
+
+      if (s.valuation) {
+        s.valuation.normalized_eps = adjEps
+        s.valuation.normalized_bvps = adjBvps
+        s.valuation.revenue_per_share = adjRevPerShare
+        s.valuation.cash_per_share = adjCashPerShare
+        s.valuation.free_cash_flow_per_share = adjFcfPerShare
+        s.valuation.graham_number = adjGraham
+      }
+    }
+  }
+
+  return statements
 }

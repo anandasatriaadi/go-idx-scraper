@@ -1,6 +1,7 @@
 package xbrl
 
 import (
+	"math"
 	"testing"
 )
 
@@ -217,5 +218,68 @@ func TestCalculator_USDEPSNormalization(t *testing.T) {
 	expectedPE := 3000.0 / 2400.0
 	if curr.Valuation.PERatio != expectedPE {
 		t.Errorf("Expected PE ratio %f, got %f", expectedPE, curr.Valuation.PERatio)
+	}
+}
+
+func TestApplyStockSplitAdjustment_DSSA_10to1(t *testing.T) {
+	// Pre-split statement (2022) with 770M shares
+	preSplit := &Statement{
+		Ticker: "DSSA",
+		Year:   2022,
+		Period: "FY",
+		Metadata: StatementMetadata{
+			Currency:       "USD",
+			ConversionRate: 15500.0,
+		},
+		Core: CoreFinancials{
+			SharesOutstanding: 770552320,
+			TotalEquity:       2000000000, // 2B USD
+			NetIncome:         600000000,  // 600M USD
+		},
+	}
+	_ = ComputeValuationAndRatios(preSplit, nil, 40000)
+	// Before adjustment: unadjusted pre-split EPS = (600M * 15500) / 770.5M = 12,069 IDR
+	// BVPS = (2B * 15500) / 770.5M = 40,230 IDR
+	// Graham = sqrt(22.5 * 12069 * 40230) = ~104,490 IDR
+	if preSplit.Valuation.GrahamNumber < 50000 {
+		t.Fatalf("Expected pre-split Graham number > 50,000, got %f", preSplit.Valuation.GrahamNumber)
+	}
+
+	// Post-split statement (2024) with 7.7B shares (10:1 split)
+	postSplit := &Statement{
+		Ticker: "DSSA",
+		Year:   2024,
+		Period: "FY",
+		Metadata: StatementMetadata{
+			Currency:       "USD",
+			ConversionRate: 16000.0,
+		},
+		Core: CoreFinancials{
+			SharesOutstanding: 7705523200, // 7.7B shares
+			TotalEquity:       2200000000,
+			NetIncome:         500000000,
+		},
+	}
+	_ = ComputeValuationAndRatios(postSplit, nil, 4000)
+
+	// Apply Stock Split Adjustment across statement sequence
+	statements := []*Statement{preSplit, postSplit}
+	ApplyStockSplitAdjustment(statements)
+
+	// After adjustment, preSplit per-share metrics should be normalized on 7.7B share basis
+	expectedAdjEPS := (600000000.0 * 15500.0) / 7705523200.0 // ~1,206.9 IDR
+	if math.Abs(preSplit.Valuation.NormalizedEPS-expectedAdjEPS) > 1.0 {
+		t.Errorf("Expected split-adjusted EPS %f, got %f", expectedAdjEPS, preSplit.Valuation.NormalizedEPS)
+	}
+
+	expectedAdjBVPS := (2000000000.0 * 15500.0) / 7705523200.0 // ~4,023.0 IDR
+	if math.Abs(preSplit.Valuation.NormalizedBVPS-expectedAdjBVPS) > 1.0 {
+		t.Errorf("Expected split-adjusted BVPS %f, got %f", expectedAdjBVPS, preSplit.Valuation.NormalizedBVPS)
+	}
+
+	// Graham number should be ~10,449 IDR (10x smaller, matching split-adjusted price of ~4,000 IDR)
+	expectedAdjGraham := math.Sqrt(22.5 * expectedAdjEPS * expectedAdjBVPS)
+	if math.Abs(preSplit.Valuation.GrahamNumber-expectedAdjGraham) > 5.0 {
+		t.Errorf("Expected split-adjusted Graham Number %f, got %f", expectedAdjGraham, preSplit.Valuation.GrahamNumber)
 	}
 }

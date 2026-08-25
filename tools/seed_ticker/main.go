@@ -370,7 +370,12 @@ func run() error {
 		if err := xbrl.ComputeValuationAndRatios(stmt, priorStmt, latestPrice); err != nil {
 			logger.Warn("Valuation calculation error", zap.String("ticker", cleanTicker), zap.Int("year", stmt.Year), zap.Error(err))
 		}
+	}
 
+	// Apply Stock Split Adjustment across historical sequence to normalize per-share metrics on latest share basis
+	xbrl.ApplyStockSplitAdjustment(statements)
+
+	for _, stmt := range statements {
 		if len(candles) > 0 {
 			bands := xbrl.ComputeValuationBands(candles, stmt.Valuation.NormalizedEPS, stmt.Valuation.NormalizedBVPS)
 			timing := xbrl.ComputeTimingSignals(candles, bands, stmt.Valuation.NormalizedEPS, stmt.Valuation.NormalizedBVPS)
