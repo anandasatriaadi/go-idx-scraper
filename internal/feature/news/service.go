@@ -107,7 +107,7 @@ func (s *Service) Summarize(ctx context.Context, ids []bson.ObjectID) error {
 				s.logger.Warn("Error finding news by ID", zap.String("id", id.Hex()), zap.Error(err))
 				continue
 			}
-			if n.Status == StatusSummarized && n.Summary != "" {
+			if n.Status == StatusSummarized || (n.Summary != "" && n.Status != StatusPending) {
 				s.logger.Debug("Article already summarized, skipping", zap.String("id", id.Hex()))
 				continue
 			}
@@ -275,7 +275,7 @@ func (s *Service) SummarizeViaOpenRouterBatchAPI(ctx context.Context, ids []bson
 		if err != nil || n == nil {
 			continue
 		}
-		if n.Status == StatusSummarized && n.Summary != "" {
+		if n.Status == StatusSummarized || (n.Summary != "" && n.Status != StatusPending) {
 			continue
 		}
 

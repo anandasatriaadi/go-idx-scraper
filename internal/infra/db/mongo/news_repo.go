@@ -70,14 +70,21 @@ func (r *NewsRepository) ExistsByLink(ctx context.Context, link string) (bool, e
 	return count > 0, nil
 }
 
-// FindPendingSummary retrieves news articles that have not yet been summarized (status is pending or missing/empty)
+// FindPendingSummary retrieves news articles that genuinely need summarization
+// (explicitly pending, failed, or lacking a summary while not already marked summarized).
+// This guarantees that legacy articles with existing summaries are NOT re-processed.
 func (r *NewsRepository) FindPendingSummary(ctx context.Context, limit int) ([]*news.News, error) {
 	filter := bson.M{
-		"$or": []bson.M{
-			{"status": news.StatusPending},
-			{"status": bson.M{"$exists": false}},
-			{"status": ""},
-			{"summary": ""},
+		"$and": []bson.M{
+			{"status": bson.M{"$ne": news.StatusSummarized}},
+			{
+				"$or": []bson.M{
+					{"status": news.StatusPending},
+					{"status": news.StatusFailed},
+					{"summary": ""},
+					{"summary": bson.M{"$exists": false}},
+				},
+			},
 		},
 	}
 	opts := options.Find().SetSort(bson.D{{Key: "date", Value: -1}}).SetLimit(int64(limit))
