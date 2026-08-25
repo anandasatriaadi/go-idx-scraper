@@ -1,220 +1,286 @@
 <template>
-  <div class="screener-container">
-    <!-- Header & Pitch -->
-    <div class="screener-header">
+  <div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
+    <!-- Header & Presets -->
+    <div class="flex flex-col gap-4 border-b border-border/80 pb-6 lg:flex-row lg:items-center lg:justify-between">
       <div>
-        <h1 class="screener-title">📊 Value Investing Screener</h1>
-        <p class="screener-sub">
-          Filter 900+ IDX companies by Margin of Safety, Return on Invested Capital (ROIC), Piotroski F-Score & Smart Timing VSA Signals
+        <div class="flex items-center gap-2">
+          <SlidersHorizontal class="h-5 w-5 text-primary" />
+          <h1 class="text-xl font-bold tracking-tight text-foreground font-mono">
+            QUANTITATIVE VALUE INVESTING SCREENER
+          </h1>
+        </div>
+        <p class="text-xs text-muted-foreground mt-1">
+          Screen 900+ IDX listed companies by Benjamin Graham Fair Value, MOS %, ROIC %, Piotroski F-Score & Smart Timing VSA Signals
         </p>
       </div>
 
-      <!-- Quick Preset Buttons -->
-      <div class="presets-row">
-        <span class="preset-label font-mono">Presets:</span>
-        <button class="preset-btn preset-actionable" @click="applyPreset('actionable_buy')">⚡ Actionable Buy (Score ≥ 70 & MOS ≥ 20%)</button>
-        <button class="preset-btn" @click="applyPreset('deep_value')">🎯 Deep Value (MOS ≥ 30%)</button>
-        <button class="preset-btn" @click="applyPreset('buffett_moat')">🏰 Buffett Moat (ROIC ≥ 15%)</button>
-        <button class="preset-btn" @click="applyPreset('piotroski_strong')">⭐ High F-Score (≥ 7)</button>
-        <button class="preset-btn reset" @click="resetFilters">↺ Reset</button>
+      <!-- Quick Presets -->
+      <div class="flex flex-wrap items-center gap-1.5">
+        <span class="text-xs font-mono text-muted-foreground mr-1">Presets:</span>
+        <Button
+          variant="outline"
+          size="xs"
+          class="font-mono text-xs border-emerald-500/40 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20"
+          @click="applyPreset('actionable_buy')"
+        >
+          ⚡ Actionable Buy (Score ≥ 70 & MOS ≥ 20%)
+        </Button>
+        <Button
+          variant="outline"
+          size="xs"
+          class="font-mono text-xs hover:border-primary/40"
+          @click="applyPreset('deep_value')"
+        >
+          🎯 Deep Value (MOS ≥ 30%)
+        </Button>
+        <Button
+          variant="outline"
+          size="xs"
+          class="font-mono text-xs hover:border-primary/40"
+          @click="applyPreset('buffett_moat')"
+        >
+          🏰 Buffett Moat (ROIC ≥ 15%)
+        </Button>
+        <Button
+          variant="outline"
+          size="xs"
+          class="font-mono text-xs hover:border-primary/40"
+          @click="applyPreset('piotroski_strong')"
+        >
+          ⭐ High F-Score (≥ 7)
+        </Button>
+        <Button
+          variant="ghost"
+          size="xs"
+          class="font-mono text-xs text-muted-foreground hover:text-foreground"
+          @click="resetFilters"
+        >
+          <RotateCcw class="mr-1 h-3 w-3" /> Reset
+        </Button>
       </div>
     </div>
 
-    <!-- Filter Controls Bar -->
-    <div class="filter-panel">
-      <div class="filter-group">
-        <label>Min Margin of Safety (%)</label>
-        <div class="input-with-unit">
-          <input
+    <!-- Filter Control Panel -->
+    <Card class="border-border bg-card/60 p-4">
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
+        <div class="space-y-1">
+          <label class="text-[11px] font-mono text-muted-foreground">Min MOS (%)</label>
+          <Input
             v-model.number="filters.minMos"
             type="number"
             placeholder="e.g. 30"
-            class="filter-input font-mono"
+            class="h-8 font-mono text-xs bg-background/80"
             @change="fetchScreener"
           />
-          <span class="unit">%</span>
         </div>
-      </div>
 
-      <div class="filter-group">
-        <label>Min ROIC (%)</label>
-        <div class="input-with-unit">
-          <input
+        <div class="space-y-1">
+          <label class="text-[11px] font-mono text-muted-foreground">Min ROIC (%)</label>
+          <Input
             v-model.number="filters.minRoicPct"
             type="number"
             placeholder="e.g. 15"
-            class="filter-input font-mono"
+            class="h-8 font-mono text-xs bg-background/80"
             @change="fetchScreener"
           />
-          <span class="unit">%</span>
+        </div>
+
+        <div class="space-y-1">
+          <label class="text-[11px] font-mono text-muted-foreground">Timing Score</label>
+          <select
+            v-model.number="filters.minTimingScore"
+            class="flex h-8 w-full rounded-md border border-input bg-background/80 px-2 py-1 text-xs font-mono text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            @change="fetchScreener"
+          >
+            <option :value="0">All Scores</option>
+            <option :value="50">≥ 50 (Accumulation)</option>
+            <option :value="70">≥ 70 (Actionable Buy)</option>
+            <option :value="80">≥ 80 (Elite Setup)</option>
+          </select>
+        </div>
+
+        <div class="space-y-1">
+          <label class="text-[11px] font-mono text-muted-foreground">P/E Band</label>
+          <select
+            v-model="filters.peBand"
+            class="flex h-8 w-full rounded-md border border-input bg-background/80 px-2 py-1 text-xs font-mono text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            @change="fetchScreener"
+          >
+            <option value="">All Levels</option>
+            <option value="minus1sd">≤ -1σ (Discount)</option>
+            <option value="minus2sd">≤ -2σ (Deep Value)</option>
+            <option value="mean">≤ Mean (Fair / Cheap)</option>
+          </select>
+        </div>
+
+        <div class="space-y-1">
+          <label class="text-[11px] font-mono text-muted-foreground">Min F-Score</label>
+          <select
+            v-model.number="filters.minFScore"
+            class="flex h-8 w-full rounded-md border border-input bg-background/80 px-2 py-1 text-xs font-mono text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            @change="fetchScreener"
+          >
+            <option :value="0">All Scores (0+)</option>
+            <option :value="5">5+ (Moderate)</option>
+            <option :value="7">7+ (Strong)</option>
+            <option :value="8">8+ (Elite)</option>
+          </select>
+        </div>
+
+        <div class="space-y-1">
+          <label class="text-[11px] font-mono text-muted-foreground">Max D/E Ratio</label>
+          <Input
+            v-model.number="filters.maxDe"
+            type="number"
+            step="0.1"
+            placeholder="e.g. 1.0"
+            class="h-8 font-mono text-xs bg-background/80"
+            @change="fetchScreener"
+          />
+        </div>
+
+        <div class="space-y-1">
+          <label class="text-[11px] font-mono text-muted-foreground">Sector</label>
+          <select
+            v-model="filters.sector"
+            class="flex h-8 w-full rounded-md border border-input bg-background/80 px-2 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring truncate"
+            @change="fetchScreener"
+          >
+            <option value="">All Sectors</option>
+            <option value="A. Energy">Energy</option>
+            <option value="B. Basic Materials">Basic Materials</option>
+            <option value="C. Industrials">Industrials</option>
+            <option value="D. Consumer Non-Cyclicals">Consumer Non-Cyclicals</option>
+            <option value="E. Consumer Cyclicals">Consumer Cyclicals</option>
+            <option value="F. Healthcare">Healthcare</option>
+            <option value="G. Financials">Financials & Banking</option>
+            <option value="H. Properties & Real Estate">Properties</option>
+            <option value="I. Technology">Technology</option>
+            <option value="J. Infrastructures">Infrastructures</option>
+          </select>
         </div>
       </div>
-
-      <div class="filter-group">
-        <label>Min Timing Score</label>
-        <select v-model.number="filters.minTimingScore" class="filter-select font-mono" @change="fetchScreener">
-          <option :value="0">All Timing Scores</option>
-          <option :value="50">≥ 50 (Accumulation)</option>
-          <option :value="70">≥ 70 (Actionable Buy)</option>
-          <option :value="80">≥ 80 (Elite Setup)</option>
-        </select>
-      </div>
-
-      <div class="filter-group">
-        <label>P/E Valuation Band</label>
-        <select v-model="filters.peBand" class="filter-select font-mono" @change="fetchScreener">
-          <option value="">All P/E Levels</option>
-          <option value="minus1sd">≤ -1σ (Discount)</option>
-          <option value="minus2sd">≤ -2σ (Deep Value)</option>
-          <option value="mean">≤ Mean (Fair / Cheap)</option>
-        </select>
-      </div>
-
-      <div class="filter-group">
-        <label>Min Piotroski F-Score (0-9)</label>
-        <select v-model.number="filters.minFScore" class="filter-select font-mono" @change="fetchScreener">
-          <option :value="0">All Scores (0+)</option>
-          <option :value="5">5+ (Moderate)</option>
-          <option :value="7">7+ (Strong)</option>
-          <option :value="8">8+ (Elite)</option>
-        </select>
-      </div>
-
-      <div class="filter-group">
-        <label>Max Debt / Equity</label>
-        <input
-          v-model.number="filters.maxDe"
-          type="number"
-          step="0.1"
-          placeholder="e.g. 1.0"
-          class="filter-input font-mono"
-          @change="fetchScreener"
-        />
-      </div>
-
-      <div class="filter-group">
-        <label>Sector</label>
-        <select v-model="filters.sector" class="filter-select" @change="fetchScreener">
-          <option value="">All Sectors</option>
-          <option value="A. Energy">Energy (Oil, Gas & Coal)</option>
-          <option value="B. Basic Materials">Basic Materials & Mining</option>
-          <option value="C. Industrials">Industrials</option>
-          <option value="D. Consumer Non-Cyclicals">Consumer Non-Cyclicals</option>
-          <option value="E. Consumer Cyclicals">Consumer Cyclicals</option>
-          <option value="F. Healthcare">Healthcare</option>
-          <option value="G. Financials">Financials & Banking</option>
-          <option value="H. Properties & Real Estate">Properties & Real Estate</option>
-          <option value="I. Technology">Technology</option>
-          <option value="J. Infrastructures">Infrastructures & Utilities</option>
-        </select>
-      </div>
-
-      <button class="btn-search font-mono" @click="fetchScreener">
-        🔍 Screen ({{ totalResults }})
-      </button>
-    </div>
+    </Card>
 
     <!-- Results Table -->
-    <div v-if="loading" class="loading-state font-mono">
+    <div v-if="loading" class="flex h-64 items-center justify-center rounded-lg border border-dashed border-border bg-card/40 font-mono text-xs text-muted-foreground">
       Screening XBRL financial statements...
     </div>
-    <div v-else-if="statements.length === 0" class="empty-state font-mono">
+    <div v-else-if="statements.length === 0" class="flex h-64 items-center justify-center rounded-lg border border-dashed border-border bg-card/40 font-mono text-xs text-muted-foreground">
       No companies matched the selected value investing filters.
     </div>
-    <div v-else class="table-card">
-      <table class="screener-table">
-        <thead>
-          <tr class="font-mono">
-            <th>Ticker</th>
-            <th>Company Name</th>
-            <th>Sector</th>
-            <th>Period</th>
-            <th>Price</th>
-            <th>Graham No.</th>
-            <th>Margin of Safety</th>
-            <th>ROIC</th>
-            <th>F-Score</th>
-            <th>Timing Score</th>
-            <th>Net Debt</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="s in statements"
-            :key="s.id || s._id"
-            class="screener-row"
-            @click="$emit('open-ticker-financials', s.ticker)"
-          >
-            <td class="ticker-cell font-mono">${{ s.ticker }}</td>
-            <td class="company-name-cell">{{ s.company_name }}</td>
-            <td class="sector-cell">{{ s.metadata?.sector || '-' }}</td>
-            <td class="period-cell font-mono">{{ s.year }}-{{ s.period }}</td>
-            <td class="font-mono price-col">
-              {{ s.valuation?.current_price ? formatCurrency(s.valuation.current_price, 'IDR') : '-' }}
-            </td>
-            <td class="font-mono graham-col">
-              {{ s.valuation?.graham_number ? formatCurrency(s.valuation.graham_number, 'IDR') : '-' }}
-            </td>
-            <td class="font-mono">
-              <span
-                v-if="s.valuation?.margin_of_safety_pct !== undefined"
-                :class="['mos-badge', getMosClass(s.valuation.margin_of_safety_pct)]"
-              >
-                {{ (s.valuation.margin_of_safety_pct > 0 ? '+' : '') + s.valuation.margin_of_safety_pct.toFixed(1) }}%
-              </span>
-              <span v-else class="text-muted">-</span>
-            </td>
-            <td class="font-mono">
-              <span
-                v-if="s.computed_ratios?.roic !== undefined"
-                :class="['roic-badge', s.computed_ratios.roic >= 0.15 ? 'roic-high' : 'roic-normal']"
-              >
-                {{ (s.computed_ratios.roic * 100).toFixed(1) }}%
-              </span>
-              <span v-else class="text-muted">-</span>
-            </td>
-            <td class="font-mono">
-              <span :class="['fscore-pill', getFScoreClass(s.computed_ratios?.piotroski_f_score)]">
-                {{ s.computed_ratios?.piotroski_f_score || 0 }}/9
-              </span>
-            </td>
-            <td class="font-mono">
-              <div v-if="s.timing_signal || s.valuation?.timing_signal" class="timing-cell">
-                <span :class="['timing-pill', getTimingClass((s.timing_signal || s.valuation?.timing_signal)?.score || 0)]">
-                  {{ (s.timing_signal || s.valuation?.timing_signal)?.score || 0 }}/100
-                </span>
-                <span v-if="(s.timing_signal || s.valuation?.timing_signal)?.status" class="timing-status-sub">
-                  {{ (s.timing_signal || s.valuation?.timing_signal)?.status }}
-                </span>
-                <div v-if="(s.timing_signal || s.valuation?.timing_signal)?.rsi_bullish_divergence || (s.timing_signal || s.valuation?.timing_signal)?.stopping_volume" class="timing-catalysts-mini">
-                  <span v-if="(s.timing_signal || s.valuation?.timing_signal)?.rsi_bullish_divergence" class="mini-chip mini-div" title="RSI Bullish Divergence">⚡ Div</span>
-                  <span v-if="(s.timing_signal || s.valuation?.timing_signal)?.stopping_volume" class="mini-chip mini-vol" title="VSA Stopping Volume">🛡️ Vol</span>
+    <Card v-else class="overflow-hidden border-border bg-card">
+      <div class="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow class="border-border hover:bg-transparent font-mono text-[11px]">
+              <TableHead class="font-bold text-foreground">Ticker</TableHead>
+              <TableHead class="font-bold text-foreground">Company</TableHead>
+              <TableHead class="font-bold text-foreground">Sector</TableHead>
+              <TableHead class="font-bold text-foreground">Period</TableHead>
+              <TableHead class="text-right font-bold text-foreground">Price</TableHead>
+              <TableHead class="text-right font-bold text-foreground">Graham No.</TableHead>
+              <TableHead class="text-center font-bold text-foreground">Margin of Safety</TableHead>
+              <TableHead class="text-center font-bold text-foreground">ROIC</TableHead>
+              <TableHead class="text-center font-bold text-foreground">F-Score</TableHead>
+              <TableHead class="text-center font-bold text-foreground">Timing Score</TableHead>
+              <TableHead class="text-right font-bold text-foreground">Net Debt</TableHead>
+              <TableHead class="text-center font-bold text-foreground">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow
+              v-for="s in statements"
+              :key="s.id || s._id"
+              class="cursor-pointer border-border hover:bg-muted/40 transition-colors font-mono text-xs"
+              @click="$emit('open-ticker-financials', s.ticker)"
+            >
+              <TableCell class="font-bold text-primary">
+                ${{ s.ticker }}
+              </TableCell>
+              <TableCell class="max-w-[180px] truncate font-sans text-xs text-foreground">
+                {{ s.company_name }}
+              </TableCell>
+              <TableCell class="font-sans text-[11px] text-muted-foreground">
+                {{ s.metadata?.sector || '-' }}
+              </TableCell>
+              <TableCell class="text-muted-foreground">
+                {{ s.year }}-{{ s.period }}
+              </TableCell>
+              <TableCell class="text-right font-semibold text-foreground">
+                {{ s.valuation?.current_price ? formatCurrency(s.valuation.current_price, 'IDR') : '-' }}
+              </TableCell>
+              <TableCell class="text-right text-muted-foreground">
+                {{ s.valuation?.graham_number ? formatCurrency(s.valuation.graham_number, 'IDR') : '-' }}
+              </TableCell>
+              <TableCell class="text-center">
+                <Badge
+                  v-if="s.valuation?.margin_of_safety_pct !== undefined"
+                  :variant="getMosVariant(s.valuation.margin_of_safety_pct)"
+                >
+                  {{ (s.valuation.margin_of_safety_pct > 0 ? '+' : '') + s.valuation.margin_of_safety_pct.toFixed(1) }}%
+                </Badge>
+                <span v-else class="text-muted-foreground">-</span>
+              </TableCell>
+              <TableCell class="text-center">
+                <Badge
+                  v-if="s.computed_ratios?.roic !== undefined"
+                  :variant="s.computed_ratios.roic >= 0.15 ? 'bullish' : 'secondary'"
+                >
+                  {{ (s.computed_ratios.roic * 100).toFixed(1) }}%
+                </Badge>
+                <span v-else class="text-muted-foreground">-</span>
+              </TableCell>
+              <TableCell class="text-center">
+                <Badge :variant="getFScoreVariant(s.computed_ratios?.piotroski_f_score)">
+                  {{ s.computed_ratios?.piotroski_f_score || 0 }}/9
+                </Badge>
+              </TableCell>
+              <TableCell class="text-center">
+                <div v-if="s.timing_signal || s.valuation?.timing_signal" class="inline-flex flex-col items-center gap-0.5">
+                  <Badge :variant="getTimingVariant((s.timing_signal || s.valuation?.timing_signal)?.score || 0)">
+                    {{ (s.timing_signal || s.valuation?.timing_signal)?.score || 0 }}/100
+                  </Badge>
                 </div>
-              </div>
-              <span v-else class="text-muted">-</span>
-            </td>
-            <td class="font-mono net-debt-col">
-              {{ formatNetDebt(s.computed_ratios?.net_debt, s.metadata?.currency) }}
-            </td>
-            <td>
-              <button
-                class="btn-inspect font-mono"
-                @click.stop="$emit('open-ticker-financials', s.ticker)"
-              >
-                360° View ↗
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+                <span v-else class="text-muted-foreground">-</span>
+              </TableCell>
+              <TableCell class="text-right text-muted-foreground">
+                {{ formatNetDebt(s.computed_ratios?.net_debt, s.metadata?.currency) }}
+              </TableCell>
+              <TableCell class="text-center" @click.stop>
+                <Button
+                  variant="outline"
+                  size="xs"
+                  class="font-mono text-[11px] hover:border-primary hover:text-primary"
+                  @click="$emit('open-ticker-financials', s.ticker)"
+                >
+                  360° View ↗
+                </Button>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </div>
+    </Card>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import type { XBRLStatement } from '../server/utils/types'
+import { SlidersHorizontal, RotateCcw } from 'lucide-vue-next'
+import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from '@/components/ui/table'
+import type { XBRLStatement } from '@/server/utils/types'
 
 defineEmits<{
   (e: 'open-ticker-financials', ticker: string): void
@@ -231,7 +297,7 @@ const filters = reactive({
   maxDe: undefined as number | undefined,
   sector: '',
   minTimingScore: 0,
-  peBand: ''
+  peBand: '',
 })
 
 const fetchScreener = async () => {
@@ -277,14 +343,10 @@ const applyPreset = (preset: string) => {
   if (preset === 'actionable_buy') {
     filters.minTimingScore = 70
     filters.minMos = 20
-    filters.minFScore = 5
   } else if (preset === 'deep_value') {
     filters.minMos = 30
-    filters.minFScore = 5
   } else if (preset === 'buffett_moat') {
     filters.minRoicPct = 15
-    filters.maxDe = 1.0
-    filters.minFScore = 7
   } else if (preset === 'piotroski_strong') {
     filters.minFScore = 7
   }
@@ -299,364 +361,45 @@ const resetFilters = () => {
   filters.sector = ''
   filters.minTimingScore = 0
   filters.peBand = ''
+  fetchScreener()
 }
 
-const getMosClass = (mos: number) => {
-  if (mos >= 30) return 'mos-elite'
-  if (mos > 0) return 'mos-positive'
-  return 'mos-negative'
+const getMosVariant = (mos?: number) => {
+  if (mos === undefined) return 'secondary'
+  if (mos >= 30) return 'safe'
+  if (mos >= 0) return 'bullish'
+  return 'bearish'
 }
 
-const getFScoreClass = (score?: number) => {
-  if (!score) return 'fscore-low'
-  if (score >= 7) return 'fscore-high'
-  if (score >= 5) return 'fscore-mid'
-  return 'fscore-low'
+const getFScoreVariant = (score?: number) => {
+  if (score === undefined) return 'secondary'
+  if (score >= 7) return 'safe'
+  if (score >= 5) return 'warning'
+  return 'danger'
 }
 
-const getTimingClass = (score: number) => {
-  if (score >= 70) return 'timing-strong'
-  if (score >= 50) return 'timing-mid'
-  return 'timing-low'
+const getTimingVariant = (score: number) => {
+  if (score >= 70) return 'safe'
+  if (score >= 50) return 'warning'
+  return 'danger'
 }
 
-const formatCurrency = (val: number, cur: string) => {
+const formatCurrency = (val?: number, currency = 'IDR') => {
+  if (val === undefined || isNaN(val)) return '-'
   return new Intl.NumberFormat('id-ID', {
-    maximumFractionDigits: 0
+    style: 'currency',
+    currency: currency,
+    maximumFractionDigits: 0,
   }).format(val)
 }
 
-const formatNetDebt = (netDebt?: number, cur?: string) => {
-  if (netDebt === undefined) return '-'
-  if (netDebt < 0) {
-    return 'Net Cash ' + formatCompact(Math.abs(netDebt))
-  }
-  return formatCompact(netDebt)
-}
-
-const formatCompact = (val: number) => {
-  if (Math.abs(val) >= 1e12) return (val / 1e12).toFixed(1) + 'T'
-  if (Math.abs(val) >= 1e9) return (val / 1e9).toFixed(1) + 'B'
-  if (Math.abs(val) >= 1e6) return (val / 1e6).toFixed(1) + 'M'
-  return val.toFixed(0)
+const formatNetDebt = (val?: number, currency = 'IDR') => {
+  if (val === undefined || isNaN(val)) return '-'
+  if (val < 0) return `Net Cash (${formatCurrency(Math.abs(val), currency)})`
+  return formatCurrency(val, currency)
 }
 
 onMounted(() => {
   fetchScreener()
 })
 </script>
-
-<style scoped>
-.screener-container {
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: 24px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-.screener-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-.screener-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-}
-.screener-sub {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-}
-.presets-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.preset-label {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
-.preset-btn {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.preset-btn:hover {
-  background: var(--bg-card-hover);
-  color: #38bdf8;
-  border-color: #38bdf8;
-}
-.preset-actionable {
-  border-color: rgba(16, 185, 129, 0.4);
-  color: #34d399;
-  background: rgba(16, 185, 129, 0.08);
-}
-.preset-actionable:hover {
-  background: rgba(16, 185, 129, 0.18);
-  border-color: #10b981;
-  color: #6ee7b7;
-}
-.preset-btn.reset {
-  color: var(--text-muted);
-}
-.filter-panel {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 16px 20px;
-  display: flex;
-  align-items: flex-end;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex: 1;
-  min-width: 140px;
-}
-.filter-group label {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-.input-with-unit {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-.filter-input, .filter-select {
-  background: var(--bg-app);
-  border: 1px solid var(--border-color);
-  color: #fff;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  width: 100%;
-  outline: none;
-}
-.filter-input:focus, .filter-select:focus {
-  border-color: #38bdf8;
-}
-.unit {
-  position: absolute;
-  right: 12px;
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
-.btn-search {
-  background: #2563eb;
-  color: #fff;
-  border: none;
-  padding: 9px 18px;
-  border-radius: 6px;
-  font-weight: 700;
-  font-size: 0.85rem;
-  cursor: pointer;
-  height: 38px;
-}
-.btn-search:hover {
-  background: #1d4ed8;
-}
-.table-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  overflow-x: auto;
-}
-.screener-table {
-  width: 100%;
-  border-collapse: collapse;
-  text-align: left;
-}
-.screener-table th {
-  background: var(--bg-app);
-  padding: 12px 16px;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border-bottom: 1px solid var(--border-color);
-  white-space: nowrap;
-}
-.screener-table td {
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border-color);
-  font-size: 0.9rem;
-}
-.screener-row {
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-.screener-row:hover td {
-  background: var(--bg-card-hover);
-}
-.ticker-cell {
-  color: #38bdf8;
-  font-weight: 700;
-  font-size: 0.95rem;
-}
-.company-name-cell {
-  font-weight: 500;
-  color: var(--text-primary);
-  max-width: 220px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.sector-cell {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-}
-.period-cell {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
-.price-col {
-  font-weight: 600;
-}
-.graham-col {
-  color: #a7f3d0;
-}
-.mos-badge {
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-weight: 700;
-  font-size: 0.8rem;
-}
-.mos-elite {
-  background: rgba(16, 185, 129, 0.2);
-  color: #34d399;
-  border: 1px solid #10b981;
-}
-.mos-positive {
-  background: rgba(16, 185, 129, 0.1);
-  color: #6ee7b7;
-}
-.mos-negative {
-  background: rgba(239, 68, 68, 0.1);
-  color: #f87171;
-}
-.roic-badge {
-  font-size: 0.8rem;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-.roic-high {
-  background: rgba(16, 185, 129, 0.15);
-  color: #34d399;
-}
-.roic-normal {
-  color: var(--text-secondary);
-}
-.fscore-pill {
-  font-size: 0.75rem;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-.fscore-high {
-  background: rgba(16, 185, 129, 0.2);
-  color: #34d399;
-  border: 1px solid #10b981;
-}
-.fscore-mid {
-  background: rgba(245, 158, 11, 0.15);
-  color: #fbbf24;
-}
-.fscore-low {
-  background: rgba(100, 116, 139, 0.15);
-  color: var(--text-muted);
-}
-.timing-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.timing-pill {
-  font-size: 0.75rem;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 4px;
-  display: inline-block;
-  width: fit-content;
-}
-.timing-strong {
-  background: rgba(16, 185, 129, 0.2);
-  color: #34d399;
-  border: 1px solid #10b981;
-}
-.timing-mid {
-  background: rgba(245, 158, 11, 0.15);
-  color: #fbbf24;
-  border: 1px solid rgba(245, 158, 11, 0.4);
-}
-.timing-low {
-  background: rgba(100, 116, 139, 0.15);
-  color: var(--text-muted);
-}
-.timing-status-sub {
-  font-size: 0.7rem;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  max-width: 140px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.timing-catalysts-mini {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-}
-.mini-chip {
-  font-size: 0.65rem;
-  font-weight: 700;
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-.mini-div {
-  background: rgba(56, 189, 248, 0.15);
-  color: #38bdf8;
-  border: 1px solid rgba(56, 189, 248, 0.3);
-}
-.mini-vol {
-  background: rgba(16, 185, 129, 0.15);
-  color: #34d399;
-  border: 1px solid rgba(16, 185, 129, 0.3);
-}
-.net-debt-col {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-}
-.btn-inspect {
-  background: var(--bg-app);
-  border: 1px solid var(--border-color);
-  color: #38bdf8;
-  padding: 5px 10px;
-  border-radius: 4px;
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.btn-inspect:hover {
-  background: #38bdf8;
-  color: #080c14;
-}
-.loading-state, .empty-state {
-  text-align: center;
-  padding: 60px;
-  color: var(--text-muted);
-}
-</style>

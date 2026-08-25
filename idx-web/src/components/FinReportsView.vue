@@ -1,102 +1,150 @@
 <template>
-  <div class="view-container">
-    <div class="view-header">
+  <div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
+    <div class="flex flex-col gap-4 border-b border-border/80 pb-6 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 class="title">📊 Financial Reports Archive</h1>
-        <p class="sub">Quarterly and annual financial statements downloaded directly from IDX</p>
+        <div class="flex items-center gap-2">
+          <FileText class="h-5 w-5 text-primary" />
+          <h1 class="text-xl font-bold tracking-tight text-foreground font-mono">
+            FINANCIAL REPORTS ARCHIVE
+          </h1>
+        </div>
+        <p class="text-xs text-muted-foreground mt-1">
+          Quarterly and annual financial statements downloaded directly from IDX
+        </p>
       </div>
 
-      <div class="search-wrap">
-        <input
+      <div class="relative w-full sm:w-72">
+        <Search class="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
           v-model="search"
           type="text"
           placeholder="Filter by Ticker (e.g. BBRI)..."
-          class="search-box font-mono"
+          class="h-8 pl-8 pr-8 font-mono text-xs bg-background/80 uppercase placeholder:normal-case"
           @input="onSearchInput"
           @keyup.enter="onSearchEnter"
         />
-        <button v-if="search" class="clear-btn" @click="clearSearch">✕</button>
+        <button
+          v-if="search"
+          class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+          @click="clearSearch"
+        >
+          ✕
+        </button>
       </div>
     </div>
 
-    <!-- Table or Loading -->
-    <div v-if="loading && items.length === 0" class="loading-box font-mono">
-      <div class="spinner"></div>
-      <span>Loading financial reports...</span>
+    <!-- Table -->
+    <div v-if="loading && items.length === 0" class="flex h-64 items-center justify-center rounded-lg border border-dashed border-border bg-card/40 font-mono text-xs text-muted-foreground">
+      Loading financial reports...
     </div>
-    <div v-else-if="items.length === 0" class="empty-box font-mono">
+    <div v-else-if="items.length === 0" class="flex h-64 items-center justify-center rounded-lg border border-dashed border-border bg-card/40 font-mono text-xs text-muted-foreground">
       No financial reports found{{ search ? ` matching "${search}"` : '' }}.
     </div>
-    <div v-else class="table-card">
-      <div v-if="loading" class="table-overlay">
-        <span class="overlay-text font-mono">Updating page...</span>
+    <Card v-else class="overflow-hidden border-border bg-card">
+      <div class="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow class="border-border hover:bg-transparent font-mono text-[11px]">
+              <TableHead class="w-32 font-bold text-foreground">Issuer Code</TableHead>
+              <TableHead class="w-32 font-bold text-foreground">Year</TableHead>
+              <TableHead class="w-48 font-bold text-foreground">Quarter / Period</TableHead>
+              <TableHead class="font-bold text-foreground">Report Filing File</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow
+              v-for="item in items"
+              :key="item.id || item._id"
+              class="border-border hover:bg-muted/40 transition-colors font-mono text-xs"
+            >
+              <TableCell>
+                <Badge
+                  variant="outline"
+                  class="cursor-pointer font-mono text-xs font-bold text-primary border-primary/30 hover:bg-primary/15 transition-colors"
+                  title="Inspect 360° Financials"
+                  @click="$emit('open-ticker-financials', item.issuer_code)"
+                >
+                  ${{ item.issuer_code }} ↗
+                </Badge>
+              </TableCell>
+              <TableCell class="text-muted-foreground">
+                {{ item.year || '-' }}
+              </TableCell>
+              <TableCell class="text-muted-foreground">
+                {{ item.quarter ? 'Q' + item.quarter : (item.period_string || 'Annual') }}
+              </TableCell>
+              <TableCell>
+                <a
+                  v-if="item.report_url"
+                  :href="item.report_url"
+                  target="_blank"
+                  rel="noopener"
+                  class="inline-flex items-center gap-1 rounded bg-secondary/80 px-2 py-0.5 font-mono text-[11px] text-primary hover:bg-primary/20 transition-colors"
+                >
+                  <Download class="h-3 w-3" />
+                  Download Excel
+                </a>
+                <span v-else class="text-muted-foreground">-</span>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
       </div>
-      <table class="data-table">
-        <thead>
-          <tr class="font-mono">
-            <th>Issuer Code</th>
-            <th>Year</th>
-            <th>Quarter / Period</th>
-            <th>Report File</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="item in items" :key="item.id || item._id">
-            <td class="font-mono issuer-col clickable" @click="$emit('open-ticker-financials', item.issuer_code)" title="Inspect 360° Financials">
-              ${{ item.issuer_code }} 🔍
-            </td>
-            <td class="font-mono">{{ item.year || '-' }}</td>
-            <td class="font-mono">{{ item.quarter ? 'Q' + item.quarter : (item.period_string || 'Annual') }}</td>
-            <td>
-              <a
-                v-if="item.report_url"
-                :href="item.report_url"
-                target="_blank"
-                rel="noopener"
-                class="download-btn font-mono"
-              >
-                📥 Download Excel
-              </a>
-              <span v-else class="text-muted">-</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    </Card>
 
-    <!-- Pagination Bar -->
-    <div class="pagination-bar font-mono">
-      <button
-        class="pagination-btn"
+    <!-- Pagination -->
+    <div v-if="totalPages > 1 || total > limit" class="flex items-center justify-between border-t border-border/80 pt-4 font-mono text-xs">
+      <Button
+        variant="outline"
+        size="sm"
         :disabled="page <= 1 || loading"
+        class="font-mono text-xs"
         @click="changePage(page - 1)"
       >
         ◀ Previous
-      </button>
+      </Button>
 
-      <div class="pagination-info">
-        Page <span class="page-current">{{ page }}</span> of <span class="page-total">{{ totalPages || 1 }}</span>
-        <span class="items-total">({{ total }} Total)</span>
-      </div>
+      <span class="text-muted-foreground">
+        Page <strong class="text-foreground">{{ page }}</strong> of {{ totalPages || 1 }} ({{ total }} Total)
+      </span>
 
-      <button
-        class="pagination-btn"
+      <Button
+        variant="outline"
+        size="sm"
         :disabled="page >= totalPages || loading"
+        class="font-mono text-xs"
         @click="changePage(page + 1)"
       >
         Next ▶
-      </button>
+      </Button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import type { FinancialReport } from '../server/utils/types'
+import { FileText, Search, Download } from 'lucide-vue-next'
+import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from '@/components/ui/table'
+import type { FinancialReport } from '@/server/utils/types'
 
 const props = defineProps<{
   reports?: FinancialReport[]
   loading?: boolean
+}>()
+
+defineEmits<{
+  (e: 'open-ticker-financials', ticker: string): void
 }>()
 
 const items = ref<FinancialReport[]>(props.reports || [])
@@ -105,10 +153,6 @@ const page = ref(1)
 const limit = ref(20)
 const total = ref(0)
 const totalPages = ref(1)
-defineEmits<{
-  (e: 'open-ticker-financials', ticker: string): void
-}>()
-
 const search = ref('')
 
 let searchDebounce: ReturnType<typeof setTimeout> | null = null
@@ -161,207 +205,12 @@ const clearSearch = () => {
   fetchReports(1)
 }
 
-const changePage = (newPage: number) => {
-  if (newPage < 1 || newPage > totalPages.value || newPage === page.value) return
-  page.value = newPage
-  fetchReports(newPage)
+const changePage = (p: number) => {
+  page.value = p
+  fetchReports(p)
 }
 
 onMounted(() => {
   fetchReports(1)
 })
 </script>
-
-<style scoped>
-.view-container {
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: 24px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-.view-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-.title {
-  font-size: 1.5rem;
-  font-weight: 700;
-}
-.sub {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-}
-.search-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-.search-box {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  color: #fff;
-  padding: 8px 32px 8px 12px;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  width: 280px;
-  outline: none;
-  transition: border-color 0.15s ease;
-}
-.search-box:focus {
-  border-color: #38bdf8;
-}
-.clear-btn {
-  position: absolute;
-  right: 8px;
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 0.85rem;
-  padding: 2px 6px;
-}
-.clear-btn:hover {
-  color: #fff;
-}
-.table-card {
-  position: relative;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  overflow-x: auto;
-  min-height: 200px;
-}
-.table-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(8, 12, 20, 0.6);
-  backdrop-filter: blur(2px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-}
-.overlay-text {
-  color: #38bdf8;
-  font-size: 0.85rem;
-  background: var(--bg-card);
-  padding: 6px 14px;
-  border-radius: 6px;
-  border: 1px solid var(--border-color);
-}
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-  text-align: left;
-}
-.data-table th {
-  background: var(--bg-app);
-  padding: 12px 16px;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border-bottom: 1px solid var(--border-color);
-}
-.data-table td {
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border-color);
-  font-size: 0.9rem;
-}
-.data-table tr:hover td {
-  background: var(--bg-card-hover);
-}
-.issuer-col {
-  color: #38bdf8;
-  font-weight: 700;
-}
-.download-btn {
-  background: #1e293b;
-  color: #34d399;
-  padding: 4px 10px;
-  border-radius: 4px;
-  text-decoration: none;
-  font-size: 0.8rem;
-  font-weight: 600;
-  display: inline-block;
-  transition: all 0.15s ease;
-}
-.download-btn:hover {
-  background: #059669;
-  color: #fff;
-}
-.pagination-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  gap: 12px;
-}
-.pagination-btn {
-  background: #1e293b;
-  border: 1px solid var(--border-subtle);
-  color: #38bdf8;
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.pagination-btn:hover:not(:disabled) {
-  background: #2563eb;
-  color: #fff;
-  border-color: #2563eb;
-}
-.pagination-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-.pagination-info {
-  color: var(--text-secondary);
-  font-size: 0.85rem;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.page-current {
-  color: #38bdf8;
-  font-weight: 700;
-}
-.page-total {
-  color: var(--text-primary);
-  font-weight: 600;
-}
-.items-total {
-  color: var(--text-muted);
-  font-size: 0.8rem;
-}
-.loading-box, .empty-box {
-  text-align: center;
-  padding: 60px;
-  color: var(--text-muted);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-.spinner {
-  width: 24px;
-  height: 24px;
-  border: 2px solid var(--border-color);
-  border-top-color: #38bdf8;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-</style>

@@ -4,7 +4,15 @@ export default defineNuxtConfig({
   
   ssr: false,
 
-  modules: [],
+  modules: [
+    '@nuxtjs/tailwindcss',
+    'shadcn-nuxt',
+  ],
+
+  shadcn: {
+    prefix: '',
+    componentDir: './src/components/ui',
+  },
   
   srcDir: 'src/',
 

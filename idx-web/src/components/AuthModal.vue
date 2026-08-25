@@ -1,55 +1,99 @@
 <template>
-  <div class="modal-backdrop" @click.self="$emit('close')">
-    <div class="auth-card">
-      <div class="auth-header">
-        <h2 class="auth-title">{{ isSignUp ? 'Create Account' : 'Sign In' }}</h2>
-        <button class="btn-close" @click="$emit('close')">✕</button>
-      </div>
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4" @click.self="$emit('close')">
+    <Card class="relative w-full max-w-sm border-border bg-card shadow-2xl overflow-hidden">
+      <CardHeader class="border-b border-border/80 pb-4">
+        <div class="flex items-center justify-between">
+          <CardTitle class="text-base font-bold font-mono tracking-tight text-foreground">
+            {{ isSignUp ? 'CREATE TERMINAL ACCOUNT' : 'INVESTOR SIGN IN' }}
+          </CardTitle>
+          <Button
+            variant="ghost"
+            size="iconSm"
+            class="h-7 w-7 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+            @click="$emit('close')"
+          >
+            ✕
+          </Button>
+        </div>
+      </CardHeader>
 
-      <div class="auth-body">
-        <div v-if="error" class="error-banner">
+      <CardContent class="p-6 space-y-4">
+        <div v-if="error" class="rounded-md border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400 font-mono">
           {{ error }}
         </div>
 
-        <!-- Google Login Button -->
-        <button class="btn-google" @click="handleGoogleLogin">
-          <span>Sign in with Google</span>
-        </button>
+        <!-- Google Login -->
+        <Button
+          variant="outline"
+          class="w-full font-mono text-xs border-border hover:border-primary/50"
+          :disabled="loading"
+          @click="handleGoogleLogin"
+        >
+          Sign in with Google
+        </Button>
 
-        <div class="divider">
-          <span>or with email</span>
+        <div class="relative my-3 text-center">
+          <div class="absolute inset-0 flex items-center">
+            <span class="w-full border-t border-border"></span>
+          </div>
+          <span class="relative bg-card px-2 text-[11px] font-mono text-muted-foreground uppercase">
+            or with email
+          </span>
         </div>
 
-        <form class="auth-form" @submit.prevent="handleSubmit">
-          <div class="form-group">
-            <label>Email</label>
-            <input v-model="email" type="email" required placeholder="investor@example.com" />
+        <form class="space-y-3" @submit.prevent="handleSubmit">
+          <div class="space-y-1">
+            <label class="text-[11px] font-mono text-muted-foreground">Email Address</label>
+            <Input
+              v-model="email"
+              type="email"
+              required
+              placeholder="investor@example.com"
+              class="h-9 font-mono text-xs bg-background/80"
+            />
           </div>
 
-          <div class="form-group">
-            <label>Password</label>
-            <input v-model="password" type="password" required placeholder="••••••••" />
+          <div class="space-y-1">
+            <label class="text-[11px] font-mono text-muted-foreground">Password</label>
+            <Input
+              v-model="password"
+              type="password"
+              required
+              placeholder="••••••••"
+              class="h-9 font-mono text-xs bg-background/80"
+            />
           </div>
 
-          <button type="submit" class="btn-submit" :disabled="loading">
+          <Button
+            type="submit"
+            class="w-full font-mono text-xs mt-2"
+            :disabled="loading"
+          >
             {{ loading ? 'Processing...' : (isSignUp ? 'Sign Up' : 'Sign In') }}
-          </button>
+          </Button>
         </form>
 
-        <div class="auth-toggle">
+        <div class="pt-2 text-center text-xs text-muted-foreground">
           <span>{{ isSignUp ? 'Already have an account?' : "Don't have an account?" }}</span>
-          <button class="btn-toggle" @click="isSignUp = !isSignUp">
+          <button
+            type="button"
+            class="ml-1.5 font-mono text-primary hover:underline font-semibold"
+            @click="isSignUp = !isSignUp"
+          >
             {{ isSignUp ? 'Sign In' : 'Create One' }}
           </button>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useAuth } from '../composables/useAuth'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { useAuth } from '@/composables/useAuth'
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -93,142 +137,3 @@ const handleSubmit = async () => {
   }
 }
 </script>
-
-<style scoped>
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-  padding: 20px;
-}
-.auth-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  width: 100%;
-  max-width: 400px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
-}
-.auth-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.auth-title {
-  font-size: 1.1rem;
-  font-weight: 700;
-}
-.btn-close {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 1.1rem;
-  cursor: pointer;
-}
-.auth-body {
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.error-banner {
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid #ef4444;
-  color: #fca5a5;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 0.85rem;
-}
-.btn-google {
-  background: #fff;
-  color: #0f172a;
-  border: none;
-  padding: 10px;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: opacity 0.15s ease;
-}
-.btn-google:hover {
-  opacity: 0.9;
-}
-.divider {
-  display: flex;
-  align-items: center;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  text-transform: uppercase;
-}
-.divider::before, .divider::after {
-  content: '';
-  flex: 1;
-  border-bottom: 1px solid var(--border-color);
-}
-.divider span {
-  padding: 0 8px;
-}
-.auth-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.form-group label {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-}
-.form-group input {
-  background: var(--bg-app);
-  border: 1px solid var(--border-color);
-  color: #fff;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  outline: none;
-}
-.form-group input:focus {
-  border-color: #38bdf8;
-}
-.btn-submit {
-  background: #2563eb;
-  color: #fff;
-  border: none;
-  padding: 10px;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 0.9rem;
-  cursor: pointer;
-  margin-top: 4px;
-}
-.btn-submit:hover:not(:disabled) {
-  background: #1d4ed8;
-}
-.auth-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-}
-.btn-toggle {
-  background: transparent;
-  border: none;
-  color: #38bdf8;
-  cursor: pointer;
-  font-weight: 600;
-}
-</style>

@@ -1,83 +1,117 @@
 <template>
-  <header class="navbar">
-    <div class="nav-container">
+  <header class="sticky top-0 z-50 w-full border-b border-border bg-card/90 backdrop-blur-md">
+    <div class="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
       <!-- Brand Logo -->
-      <div class="brand" @click="$emit('select-tab', 'overview')">
-        <span class="brand-badge">IDX</span>
-        <span class="brand-title">TERMINAL</span>
-        <span class="pulse-indicator" title="Live System Online"></span>
+      <div
+        class="flex cursor-pointer items-center gap-2.5 transition-opacity hover:opacity-80"
+        @click="$emit('select-tab', 'overview')"
+      >
+        <Badge variant="default" class="rounded px-1.5 py-0.5 font-mono text-[11px] font-bold tracking-wider">
+          IDX
+        </Badge>
+        <span class="font-mono text-sm font-bold tracking-tight text-foreground">
+          TERMINAL
+        </span>
+        <span class="relative flex h-2 w-2" title="Market Ingestion Engine Live">
+          <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+          <span class="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+        </span>
       </div>
 
       <!-- Navigation Tabs -->
-      <nav class="nav-tabs">
-        <button
-          :class="['tab-btn', { active: activeTab === 'overview' }]"
-          @click="$emit('select-tab', 'overview')"
+      <nav class="hidden items-center gap-1 md:flex">
+        <Button
+          v-for="item in navItems"
+          :key="item.id"
+          :variant="activeTab === item.id ? 'secondary' : 'ghost'"
+          size="sm"
+          class="font-mono text-xs transition-all"
+          :class="activeTab === item.id ? 'bg-secondary text-primary font-semibold shadow-xs border border-border/80' : 'text-muted-foreground hover:text-foreground'"
+          @click="$emit('select-tab', item.id)"
         >
-          Overview
-        </button>
-        <button
-          :class="['tab-btn', { active: activeTab === 'briefing' }]"
-          @click="$emit('select-tab', 'briefing')"
-        >
-          Daily Briefing
-        </button>
-        <button
-          :class="['tab-btn', { active: activeTab === 'screener' }]"
-          @click="$emit('select-tab', 'screener')"
-        >
-          Value Screener
-        </button>
-        <button
-          :class="['tab-btn', { active: activeTab === 'news' }]"
-          @click="$emit('select-tab', 'news')"
-        >
-          News Terminal
-        </button>
-        <button
-          :class="['tab-btn', { active: activeTab === 'announcements' }]"
-          @click="$emit('select-tab', 'announcements')"
-        >
-          Disclosures
-        </button>
-        <button
-          :class="['tab-btn', { active: activeTab === 'reports' }]"
-          @click="$emit('select-tab', 'reports')"
-        >
-          Financial Reports
-        </button>
+          <component :is="item.icon" class="mr-1.5 h-3.5 w-3.5" />
+          {{ item.label }}
+        </Button>
       </nav>
 
       <!-- Right Controls -->
-      <div class="nav-actions">
+      <div class="flex items-center gap-3">
         <!-- Quick Search -->
-        <div class="search-box">
-          <span class="search-icon">🔍</span>
-          <input
+        <div class="relative w-48 sm:w-64">
+          <Search class="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
             v-model="searchQuery"
             type="text"
             placeholder="Search ticker (e.g. BBRI)..."
-            class="search-input font-mono"
+            class="h-8 pl-8 pr-8 font-mono text-xs bg-background/60 border-border focus-visible:ring-1 focus-visible:ring-primary uppercase placeholder:normal-case"
             @keyup.enter="handleSearch"
           />
+          <kbd class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
+            ↵
+          </kbd>
         </div>
 
         <!-- User Auth -->
-        <button v-if="!user" class="btn-auth" @click="$emit('open-auth')">
+        <Button
+          v-if="!user"
+          variant="outline"
+          size="sm"
+          class="font-mono text-xs border-primary/40 text-primary hover:bg-primary/10"
+          @click="$emit('open-auth')"
+        >
+          <User class="mr-1.5 h-3.5 w-3.5" />
           Sign In
-        </button>
-        <div v-else class="user-pill">
-          <span class="user-email font-mono">{{ userEmail }}</span>
-          <button class="btn-logout" title="Sign Out" @click="logout">✕</button>
+        </Button>
+        <div v-else class="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 p-1 pl-2.5">
+          <span class="font-mono text-xs font-medium text-foreground">
+            {{ userEmail }}
+          </span>
+          <Button
+            variant="ghost"
+            size="iconSm"
+            class="h-6 w-6 rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            title="Sign Out"
+            @click="logout"
+          >
+            <LogOut class="h-3 w-3" />
+          </Button>
         </div>
       </div>
+    </div>
+
+    <!-- Mobile Nav Bar -->
+    <div class="flex overflow-x-auto border-t border-border/50 px-2 py-1.5 md:hidden scrollbar-none gap-1 bg-card/50">
+      <Button
+        v-for="item in navItems"
+        :key="item.id"
+        :variant="activeTab === item.id ? 'secondary' : 'ghost'"
+        size="xs"
+        class="whitespace-nowrap font-mono text-[11px]"
+        @click="$emit('select-tab', item.id)"
+      >
+        {{ item.label }}
+      </Button>
     </div>
   </header>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useAuth } from '../composables/useAuth'
+import {
+  LayoutDashboard,
+  Radio,
+  SlidersHorizontal,
+  Newspaper,
+  BellRing,
+  FileText,
+  Search,
+  User,
+  LogOut,
+} from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { useAuth } from '@/composables/useAuth'
 
 defineProps<{
   activeTab: string
@@ -92,6 +126,15 @@ const emit = defineEmits<{
 const { user, logout } = useAuth()
 const searchQuery = ref('')
 
+const navItems = [
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'briefing', label: 'Daily Briefing', icon: Radio },
+  { id: 'screener', label: 'Value Screener', icon: SlidersHorizontal },
+  { id: 'news', label: 'News Terminal', icon: Newspaper },
+  { id: 'announcements', label: 'Disclosures', icon: BellRing },
+  { id: 'reports', label: 'Filings', icon: FileText },
+]
+
 const userEmail = computed(() => {
   if (!user.value?.email) return 'User'
   return user.value.email.split('@')[0]
@@ -103,153 +146,3 @@ const handleSearch = () => {
   }
 }
 </script>
-
-<style scoped>
-.navbar {
-  background: var(--bg-card);
-  border-bottom: 1px solid var(--border-color);
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  backdrop-filter: blur(8px);
-}
-.nav-container {
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: 0 20px;
-  height: 64px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-}
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  user-select: none;
-}
-.brand-badge {
-  background: #2563eb;
-  color: #fff;
-  font-weight: 800;
-  font-size: 0.75rem;
-  padding: 2px 6px;
-  border-radius: 4px;
-  letter-spacing: 0.05em;
-}
-.brand-title {
-  font-weight: 700;
-  font-size: 1.1rem;
-  letter-spacing: 0.08em;
-  color: var(--text-primary);
-}
-.pulse-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #10b981;
-  box-shadow: 0 0 8px #10b981;
-}
-.nav-tabs {
-  display: flex;
-  gap: 4px;
-  background: var(--bg-app);
-  padding: 4px;
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-}
-.tab-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.tab-btn:hover {
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.04);
-}
-.tab-btn.active {
-  background: var(--bg-card-active);
-  color: #38bdf8;
-  font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-}
-.nav-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.search-box {
-  display: flex;
-  align-items: center;
-  background: var(--bg-app);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  padding: 6px 10px;
-  gap: 6px;
-}
-.search-icon {
-  font-size: 0.8rem;
-  opacity: 0.6;
-}
-.search-input {
-  background: transparent;
-  border: none;
-  color: var(--text-primary);
-  font-size: 0.85rem;
-  outline: none;
-  width: 180px;
-}
-.search-input::placeholder {
-  color: var(--text-muted);
-}
-.btn-auth {
-  background: #2563eb;
-  color: #fff;
-  border: none;
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-.btn-auth:hover {
-  background: #1d4ed8;
-}
-.user-pill {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--bg-app);
-  border: 1px solid var(--border-color);
-  padding: 4px 10px;
-  border-radius: 6px;
-}
-.user-email {
-  font-size: 0.85rem;
-  color: #38bdf8;
-}
-.btn-logout {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  cursor: pointer;
-}
-.btn-logout:hover {
-  color: #ef4444;
-}
-@media (max-width: 900px) {
-  .nav-tabs {
-    display: none;
-  }
-}
-</style>
