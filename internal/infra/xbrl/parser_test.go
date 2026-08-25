@@ -2,8 +2,11 @@ package xbrl
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	domain "github.com/anandasatriaadi/go-idx-scraper/internal/feature/xbrl"
 )
 
 func TestParseInstanceXML_Mock(t *testing.T) {
@@ -48,6 +51,24 @@ func TestParseInstanceXML_Mock(t *testing.T) {
 	}
 	if stmt.Core.NetIncome != 45000000000000 {
 		t.Errorf("Expected NetIncome 45000000000000, got %f", stmt.Core.NetIncome)
+	}
+}
+
+func TestParseInstanceXML_DSSA(t *testing.T) {
+	files, _ := filepath.Glob("../../../saham/*DSSA*.zip")
+	for _, f := range files {
+		stmt, err := ParseAnyFiling(f)
+		if err != nil {
+			t.Logf("err parsing %s: %v", f, err)
+			continue
+		}
+		domain.ComputeValuationAndRatios(stmt, nil, 40000)
+		t.Logf("=== File: %s ===", f)
+		t.Logf("Ticker: %s, Year: %d, Period: %s, Date: %s", stmt.Ticker, stmt.Year, stmt.Period, stmt.PeriodEndDate.Format("2006-01-02"))
+		t.Logf("Currency: %s, Mult: %f, FX: %f", stmt.Metadata.Currency, stmt.Metadata.RoundingMultiplier, stmt.Metadata.ConversionRate)
+		t.Logf("Shares: %f", stmt.Core.SharesOutstanding)
+		t.Logf("Equity: %f, NetIncome: %f, NetIncomeParent: %f", stmt.Core.TotalEquity, stmt.Core.NetIncome, stmt.Core.NetIncomeParent)
+		t.Logf("EPS: %f, BVPS: %f, GrahamNumber: %f", stmt.Valuation.NormalizedEPS, stmt.Valuation.NormalizedBVPS, stmt.Valuation.GrahamNumber)
 	}
 }
 

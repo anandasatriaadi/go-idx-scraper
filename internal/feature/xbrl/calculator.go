@@ -119,8 +119,10 @@ func ComputeValuationAndRatios(stmt *Statement, priorStmt *Statement, currentSto
 	// 6. Currency Normalization (USD -> IDR) & Satuan / Rounding Scaling
 	fxRate := 1.0
 	if stmt.Metadata.Currency == "USD" {
-		if stmt.Metadata.ConversionRate > 0 {
+		if stmt.Metadata.ConversionRate >= 1000 {
 			fxRate = stmt.Metadata.ConversionRate
+		} else if stmt.Metadata.ConversionRate > 0 && stmt.Metadata.ConversionRate < 1000 {
+			fxRate = stmt.Metadata.ConversionRate * 1000
 		} else {
 			fxRate = 16000.0 // Conservative default if unpopulated
 		}

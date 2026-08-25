@@ -279,6 +279,10 @@ func assignDEIMetadata(s *domain.Statement, tag, val string) {
 		}
 	case "ConversionRateAtReportingDateIfPresentationCurrencyIsOtherThanRupiah":
 		rate, _ := parseNumericValue(val)
+		if rate > 0 && rate < 1000 {
+			// Handles Indonesian notation where 16.680 was written with dot as thousand separator
+			rate = rate * 1000
+		}
 		s.Metadata.ConversionRate = rate
 	case "CurrentPeriodEndDate", "PeriodEndDate", "BalanceSheetDate", "CurrentPeriodStartDate":
 		if t, err := parseFlexibleDate(val); err == nil {
