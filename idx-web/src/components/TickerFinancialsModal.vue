@@ -237,6 +237,34 @@
                 </div>
                 <div class="data-row">
                   <span class="label has-tooltip">
+                    Dividend Yield (Est) <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">Dividend Yield %</strong>
+                      <span class="tt-formula">Formula: (DPS / Current Price) * 100</span>
+                      <span class="tt-target">🟢 High Yield: ≥ 6.0% | Steady: 3.5% - 5.5%</span>
+                      <span class="tt-desc">Annual cash return distributed to shareholders per IDR invested.</span>
+                    </span>
+                  </span>
+                  <span :class="['val font-mono', (latestDividendYieldPct || 0) >= 5 ? 'text-green font-bold' : 'text-cyan']">
+                    {{ latestDividendYieldPct !== null ? formatPct(latestDividendYieldPct) : '-' }}
+                  </span>
+                </div>
+                <div class="data-row">
+                  <span class="label has-tooltip">
+                    FCF Yield (TTM) <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">Free Cash Flow Yield %</strong>
+                      <span class="tt-formula">Formula: (FCF Per Share / Price) * 100</span>
+                      <span class="tt-target">Target: ≥ 7.0% - 10.0%</span>
+                      <span class="tt-desc">Cash generated after CapEx as a percentage of market capitalization.</span>
+                    </span>
+                  </span>
+                  <span :class="['val font-mono', (latestFcfYieldPct || 0) >= 7 ? 'text-green' : '']">
+                    {{ latestFcfYieldPct !== null ? formatPct(latestFcfYieldPct) : '-' }}
+                  </span>
+                </div>
+                <div class="data-row">
+                  <span class="label has-tooltip">
                     EV to EBIT (TTM) <span class="info-dot">ℹ️</span>
                     <span class="tooltip-bubble">
                       <strong class="tt-title">EV / EBIT</strong>
@@ -302,7 +330,7 @@
 
             <!-- Per Share Metrics Card -->
             <div class="metric-card">
-              <h3 class="card-heading">Per Share</h3>
+              <h3 class="card-heading">Per Share & Distributions</h3>
               <div class="data-rows">
                 <div class="data-row">
                   <span class="label">Current EPS (IDR)</span>
@@ -317,12 +345,29 @@
                   <span class="val font-mono">{{ formatIDRPrice(latestStatement?.valuation?.revenue_per_share) }}</span>
                 </div>
                 <div class="data-row">
-                  <span class="label">Cash Per Share</span>
-                  <span class="val font-mono">{{ formatIDRPrice(latestStatement?.valuation?.cash_per_share) }}</span>
-                </div>
-                <div class="data-row">
                   <span class="label">Free Cashflow Per Share</span>
                   <span class="val font-mono">{{ formatIDRPrice(latestStatement?.valuation?.free_cash_flow_per_share) }}</span>
+                </div>
+                <div class="data-row">
+                  <span class="label has-tooltip">
+                    Dividend Per Share (DPS) <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">Dividend Per Share (DPS)</strong>
+                      <span class="tt-desc">Cash dividends paid per share in IDR.</span>
+                    </span>
+                  </span>
+                  <span class="val font-mono text-green">{{ latestDps > 0 ? formatIDRPrice(latestDps) : '-' }}</span>
+                </div>
+                <div class="data-row">
+                  <span class="label has-tooltip">
+                    Payout Ratio (DPR) <span class="info-dot">ℹ️</span>
+                    <span class="tooltip-bubble">
+                      <strong class="tt-title">Dividend Payout Ratio (DPR %)</strong>
+                      <span class="tt-formula">Formula: (Dividends / Net Income) * 100</span>
+                      <span class="tt-target">Target: 30% - 70% (Sustainable)</span>
+                    </span>
+                  </span>
+                  <span class="val font-mono">{{ latestDprPct !== null ? formatPct(latestDprPct) : '-' }}</span>
                 </div>
               </div>
             </div>
@@ -407,36 +452,6 @@
             <div class="metric-card matrix-table-card">
               <div class="table-header-bar">
                 <div class="matrix-tabs font-mono">
-                  <button
-                    :class="['m-tab', { active: matrixMetric === 'net_income' }]"
-                    @click="matrixMetric = 'net_income'"
-                  >
-                    Net Income
-                  </button>
-                  <button
-                    :class="['m-tab', { active: matrixMetric === 'revenue' }]"
-                    @click="matrixMetric = 'revenue'"
-                  >
-                    Revenue
-                  </button>
-                  <button
-                    :class="['m-tab', { active: matrixMetric === 'fcf' }]"
-                    @click="matrixMetric = 'fcf'"
-                  >
-                    Free Cash Flow
-                  </button>
-                  <button
-                    :class="['m-tab', { active: matrixMetric === 'roic' }]"
-                    @click="matrixMetric = 'roic'"
-                  >
-                    ROIC (%)
-                  </button>
-                  <button
-                    :class="['m-tab', { active: matrixMetric === 'roe' }]"
-                    @click="matrixMetric = 'roe'"
-                  >
-                    ROE (%)
-                  </button>
                   <button
                     :class="['m-tab', { active: matrixMetric === 'net_income' }]"
                     @click="matrixMetric = 'net_income'"
@@ -1412,6 +1427,39 @@ const isFinancialSector = computed(() => {
   const s = latestStatement.value?.metadata?.sector?.toLowerCase() || ''
   const ind = latestStatement.value?.metadata?.industry?.toLowerCase() || ''
   return s.includes('financial') || s.includes('finance') || ind.includes('bank')
+})
+
+const latestDividendPaid = computed(() => {
+  return latestStatement.value?.core?.dividends_paid || 0
+})
+
+const latestDps = computed(() => {
+  const div = latestDividendPaid.value
+  const shares = latestStatement.value?.core?.shares_outstanding || 1
+  if (div <= 0 || shares <= 1) return 0
+  const fx = latestStatement.value?.metadata?.currency === 'USD' ? (latestStatement.value?.metadata?.conversion_rate || 16000) : 1
+  return (div * fx) / shares
+})
+
+const latestDividendYieldPct = computed(() => {
+  const dps = latestDps.value
+  const price = latestStatement.value?.valuation?.current_price || 0
+  if (dps <= 0 || price <= 0) return null
+  return (dps / price) * 100
+})
+
+const latestFcfYieldPct = computed(() => {
+  const fcfPerShare = latestStatement.value?.valuation?.free_cash_flow_per_share || 0
+  const price = latestStatement.value?.valuation?.current_price || 0
+  if (fcfPerShare <= 0 || price <= 0) return null
+  return (fcfPerShare / price) * 100
+})
+
+const latestDprPct = computed(() => {
+  const div = latestDividendPaid.value
+  const net = latestStatement.value?.core?.net_income_parent || latestStatement.value?.core?.net_income || 0
+  if (div <= 0 || net <= 0) return null
+  return (div / net) * 100
 })
 
 const latestTimingSignal = computed(() => {
