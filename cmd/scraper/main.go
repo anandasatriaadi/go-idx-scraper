@@ -33,12 +33,14 @@ func run() error {
 	var scrapeStartDate string
 	var scrapeEndDate string
 	var skipBriefing bool
+	var useBatchAPI bool
 
 	flag.StringVar(&configPath, "config", "config/config.yml", "Path to configuration file")
 	flag.BoolVar(&noHeadless, "no-headless", false, "Disable headless mode for browser")
 	flag.StringVar(&scrapeStartDate, "start-date", "", "Start date (YYYY-MM-DD), default yesterday GMT+8")
 	flag.StringVar(&scrapeEndDate, "end-date", "", "End date (YYYY-MM-DD), default today GMT+8")
 	flag.BoolVar(&skipBriefing, "skip-briefing", false, "Skip generating daily briefing")
+	flag.BoolVar(&useBatchAPI, "batch-api", false, "Use OpenRouter Batch API (/api/beta/batches) for 50% token pricing discount")
 	flag.Parse()
 
 	logger, err := helper.NewLogger("scraper")
@@ -150,19 +152,26 @@ func run() error {
 
 	// Summarize all pending unsummarized articles in optimized batches
 	pendingNews, pErr := repo.FindPendingSummary(ctx, 3000)
+	var targetIDs []bson.ObjectID
 	if pErr == nil && len(pendingNews) > 0 {
-		var pendingIDs []bson.ObjectID
 		for _, pn := range pendingNews {
-			pendingIDs = append(pendingIDs, pn.ID)
-		}
-		logger.Info("Batch summarizing pending articles", zap.Int("total_pending", len(pendingIDs)))
-		if err := service.Summarize(ctx, pendingIDs); err != nil {
-			logger.Error("Failed to batch summarize pending news", zap.Error(err))
+			targetIDs = append(targetIDs, pn.ID)
 		}
 	} else if len(ids) > 0 {
-		logger.Info("Batch summarizing newly fetched articles", zap.Int("count", len(ids)))
-		if err := service.Summarize(ctx, ids); err != nil {
-			logger.Error("Failed to batch summarize news", zap.Error(err))
+		targetIDs = ids
+	}
+
+	if len(targetIDs) > 0 {
+		if useBatchAPI {
+			logger.Info("Submitting to OpenRouter Batch API (50% token pricing discount)", zap.Int("articles_count", len(targetIDs)))
+			if err := service.SummarizeViaOpenRouterBatchAPI(ctx, targetIDs); err != nil {
+				logger.Error("OpenRouter Batch API summarization error", zap.Error(err))
+			}
+		} else {
+			logger.Info("Executing micro-batch summarization", zap.Int("articles_count", len(targetIDs)))
+			if err := service.Summarize(ctx, targetIDs); err != nil {
+				logger.Error("Micro-batch summarization error", zap.Error(err))
+			}
 		}
 	}
 

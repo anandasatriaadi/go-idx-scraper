@@ -255,6 +255,168 @@ ARTICLES TO EVALUATE:
 	return nil
 }
 
+// SummarizeViaOpenRouterBatchAPI submits unsummarized articles to OpenRouter's asynchronous Batch API
+// to receive the 50% discount on token pricing and process large backfills without connection timeouts.
+func (s *Service) SummarizeViaOpenRouterBatchAPI(ctx context.Context, ids []bson.ObjectID) error {
+	s.logger.Info("Starting OpenRouter Batch API summarization (50% token discount)", zap.Int("num_ids", len(ids)))
+	if s.cfg == nil || s.cfg.OpenrouterApiKey == "" {
+		return fmt.Errorf("openrouter API key not configured")
+	}
+
+	schema, err := jsonschema.GenerateSchemaForType(NewsSummary{})
+	if err != nil {
+		return fmt.Errorf("generating schema: %w", err)
+	}
+
+	var batchRequests []BatchRequestItem
+
+	for _, id := range ids {
+		n, err := s.repo.FindByID(ctx, id)
+		if err != nil || n == nil {
+			continue
+		}
+		if n.Status == StatusSummarized && n.Summary != "" {
+			continue
+		}
+
+		prompt := fmt.Sprintf(`You are an expert Personal Investment Manager and seasoned Value Investor adhering strictly to the fundamental principles of Benjamin Graham, Warren Buffett, and Charlie Munger.
+
+Analyze the provided financial news article with super objective, disciplined rigor. Evaluate whether this event impacts intrinsic business value, economic moats, capital allocation, balance sheet durability, or free cash flow generation.
+
+Provide your evaluation adhering to the following rules:
+- Title: Clear, concise, and professional headline.
+- Summary: Exactly 3 sentences. Cover core facts, financial metrics, and operational impact.
+- Priority: Integer from 1 to 10 (1 = critical high-impact market event, 10 = routine noise).
+- ValueScore: Integer from -10 to +10 (-10 = severe capital destruction, 0 = neutral noise, +10 = massive moat widening).
+- ImpactDirection: Exactly "Bullish", "Bearish", or "Neutral".
+- InvestmentTakeaway: 1 to 2 sentences summarizing the bottom-line takeaway for a long-term value investor.
+- Tickers: Array of uppercase 4-letter Indonesian stock tickers explicitly mentioned or impacted (e.g. ["BBRI", "BBCA"]). Empty array [] if no specific company is mentioned.
+- Sector: Official IDX-IC Sector (e.g. "G. Financials", "A. Energy", "Macroeconomics").
+- Subsector: Official IDX-IC Subsector (e.g. "G1. Banks", "A1. Oil, Gas, and Coal", "General Market & Policy").
+- IsIndustryWide: Boolean true if the news affects the whole sector or macro economy rather than an isolated company.
+
+Article:
+"""
+%s
+"""`, n.Content)
+
+		batchRequests = append(batchRequests, BatchRequestItem{
+			CustomID: n.ID.Hex(),
+			Body: BatchRequestBody{
+				Messages: []openrouter.ChatCompletionMessage{
+					{
+						Role:    openrouter.ChatMessageRoleUser,
+						Content: openrouter.Content{Text: prompt},
+					},
+				},
+				ResponseFormat: &openrouter.ChatCompletionResponseFormat{
+					Type: openrouter.ChatCompletionResponseFormatTypeJSONSchema,
+					JSONSchema: &openrouter.ChatCompletionResponseFormatJSONSchema{
+						Name:   "news_summary",
+						Schema: schema,
+						Strict: true,
+					},
+				},
+			},
+		})
+	}
+
+	if len(batchRequests) == 0 {
+		s.logger.Info("All requested articles are already summarized")
+		return nil
+	}
+
+	s.logger.Info("Submitting batch to OpenRouter Batch API (50% pricing discount)", zap.Int("requests_count", len(batchRequests)))
+	batch, err := SubmitOpenRouterBatch(ctx, s.cfg.OpenrouterApiKey, "google/gemini-3.7-flash", batchRequests)
+	if err != nil {
+		return fmt.Errorf("submitting openrouter batch: %w", err)
+	}
+
+	s.logger.Info("OpenRouter Batch successfully queued",
+		zap.String("batch_id", batch.ID),
+		zap.String("status", batch.Status),
+		zap.Int("total_requests", batch.RequestCounts.Total),
+	)
+
+	// Poll for batch completion
+	ticker := time.NewTicker(6 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			current, err := GetOpenRouterBatch(ctx, s.cfg.OpenrouterApiKey, batch.ID)
+			if err != nil {
+				s.logger.Warn("Failed to poll batch status", zap.String("batch_id", batch.ID), zap.Error(err))
+				continue
+			}
+
+			s.logger.Info("Batch progress",
+				zap.String("batch_id", current.ID),
+				zap.String("status", current.Status),
+				zap.Int("completed", current.RequestCounts.Completed),
+				zap.Int("total", current.RequestCounts.Total),
+			)
+
+			if current.Status == "completed" {
+				s.logger.Info("Batch completed! Processing results...",
+					zap.String("batch_id", current.ID),
+					zap.Any("usage", current.Usage),
+				)
+
+				successCount := 0
+				for _, resItem := range current.Results {
+					artID, err := bson.ObjectIDFromHex(resItem.CustomID)
+					if err != nil {
+						continue
+					}
+
+					if resItem.Response != nil && len(resItem.Response.Body.Choices) > 0 {
+						var summary NewsSummary
+						text := resItem.Response.Body.Choices[0].Message.Content
+						if err := json.Unmarshal([]byte(text), &summary); err == nil {
+							update := bson.M{
+								"$set": bson.M{
+									"title":               summary.Title,
+									"summary":             summary.Summary,
+									"priority":            summary.Priority,
+									"value_score":         summary.ValueScore,
+									"impact_direction":    summary.ImpactDirection,
+									"investment_takeaway": summary.InvestmentTakeaway,
+									"tickers":             summary.Tickers,
+									"sector":              summary.Sector,
+									"subsector":           summary.Subsector,
+									"industry":            summary.Subsector,
+									"is_industry_wide":    summary.IsIndustryWide,
+									"status":              StatusSummarized,
+									"updated_at":          time.Now(),
+								},
+							}
+							if err := s.repo.UpdateByID(ctx, artID, update); err == nil {
+								successCount++
+							}
+						}
+					} else if resItem.Error != nil {
+						_ = s.repo.UpdateByID(ctx, artID, bson.M{"$set": bson.M{"status": StatusFailed}})
+					}
+				}
+
+				s.logger.Info("Finished updating batch articles in MongoDB",
+					zap.Int("success_count", successCount),
+					zap.Int("total_batch", len(current.Results)),
+				)
+				return nil
+			}
+
+			if current.Status == "failed" || current.Status == "expired" || current.Status == "cancelled" {
+				return fmt.Errorf("batch terminated with status: %s", current.Status)
+			}
+		}
+	}
+}
+
 type BriefingSchemaOutput struct {
 	Title            string            `json:"title" jsonschema:"description=Engaging title for today's market briefing"`
 	MacroPulse       string            `json:"macro_pulse" jsonschema:"description=2-3 sentence summary of broader market sentiment and macro developments"`
