@@ -332,12 +332,24 @@ func assignCoreMetric(stmt *domain.Statement, tag string, val float64) {
 		c.TotalEquity = val
 	case "RetainedEarningsUnappropriated":
 		c.RetainedEarnings = val
-	case "SalesAndRevenue", "Revenues", "InterestIncome", "InterestAndFinanceIncome":
+	case "SalesAndRevenue", "Revenues":
 		c.Revenue = val
-	case "CostOfSalesAndRevenue", "InterestExpense":
+	case "InterestIncome", "InterestAndFinanceIncome":
+		if c.Revenue == 0 {
+			c.Revenue = val
+		}
+	case "CostOfSalesAndRevenue":
 		c.CostOfRevenue = val
-	case "GrossProfit", "NetInterestIncome":
+	case "InterestExpense":
+		if c.CostOfRevenue == 0 {
+			c.CostOfRevenue = val
+		}
+	case "GrossProfit":
 		c.GrossProfit = val
+	case "NetInterestIncome":
+		if c.GrossProfit == 0 {
+			c.GrossProfit = val
+		}
 	case "OperatingIncomeExpense", "OperatingIncome", "OperatingProfitLoss", "ProfitLossFromOperatingActivities":
 		c.OperatingIncome = val
 	case "ProfitLossBeforeIncomeTax", "ProfitLossBeforeTax":
@@ -386,6 +398,9 @@ func finalizeCoreFinancials(s *domain.Statement) {
 	}
 	if c.OperatingIncome == 0 && c.NetIncome != 0 {
 		c.OperatingIncome = c.NetIncome + c.FinanceCosts
+	}
+	if c.GrossProfit > 0 && c.CostOfRevenue > 0 && (c.Revenue == 0 || c.Revenue < c.GrossProfit) {
+		c.Revenue = c.GrossProfit + c.CostOfRevenue
 	}
 	if c.GrossProfit == 0 && c.Revenue != 0 && c.CostOfRevenue != 0 {
 		c.GrossProfit = c.Revenue - c.CostOfRevenue

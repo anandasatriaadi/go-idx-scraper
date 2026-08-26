@@ -209,6 +209,35 @@ func TestParseInstanceXML_AADI(t *testing.T) {
 	}
 }
 
+func TestParseASII_RealFiling(t *testing.T) {
+	path := "../../../saham/FinancialStatement-2024-Audit-ASII-instance.zip"
+	if _, err := os.Stat(path); err != nil {
+		t.Skipf("File not found: %v", err)
+	}
+
+	stmt, err := ParseAnyFiling(path)
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+
+	t.Logf("ASII 2024 Audit:")
+	t.Logf("  Revenue: %f", stmt.Core.Revenue)
+	t.Logf("  CostOfRevenue: %f", stmt.Core.CostOfRevenue)
+	t.Logf("  GrossProfit: %f", stmt.Core.GrossProfit)
+	t.Logf("  OperatingIncome: %f", stmt.Core.OperatingIncome)
+	t.Logf("  NetIncome: %f", stmt.Core.NetIncome)
+	t.Logf("  NetIncomeParent: %f", stmt.Core.NetIncomeParent)
+	t.Logf("  SharesOutstanding: %f", stmt.Core.SharesOutstanding)
+	t.Logf("  RoundingMultiplier: %f", stmt.Metadata.RoundingMultiplier)
+
+	// List facts related to revenue or sales
+	for k, v := range stmt.Facts {
+		if strings.Contains(strings.ToLower(k), "revenue") || strings.Contains(strings.ToLower(k), "sales") || strings.Contains(strings.ToLower(k), "profit") {
+			t.Logf("Fact: %s => %+v", k, v)
+		}
+	}
+}
+
 func TestParseAnyFiling_ExcelSample(t *testing.T) {
 	samplePath := "saham/FinancialStatement-2025-III-AALI.xlsx"
 	if _, err := os.Stat("../../../" + samplePath); err != nil {
