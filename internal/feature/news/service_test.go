@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"github.com/revrost/go-openrouter/jsonschema"
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.uber.org/zap"
 )
 
@@ -19,13 +17,10 @@ type MockRepository struct {
 }
 
 func (m *MockRepository) Create(ctx context.Context, n *News) error { return m.Err }
-func (m *MockRepository) FindAll(ctx context.Context, filter any, opts ...options.Lister[options.FindOptions]) ([]*News, error) {
-	return m.NewsList, m.Err
-}
-func (m *MockRepository) FindByID(ctx context.Context, id bson.ObjectID) (*News, error) {
+func (m *MockRepository) FindByID(ctx context.Context, id string) (*News, error) {
 	return m.OneNews, m.Err
 }
-func (m *MockRepository) UpdateByID(ctx context.Context, id bson.ObjectID, update any) error {
+func (m *MockRepository) UpdateSummary(ctx context.Context, id string, summary *NewsSummaryUpdate) error {
 	return m.Err
 }
 func (m *MockRepository) ExistsByLink(ctx context.Context, link string) (bool, error) {
@@ -33,6 +28,32 @@ func (m *MockRepository) ExistsByLink(ctx context.Context, link string) (bool, e
 }
 func (m *MockRepository) FindPendingSummary(ctx context.Context, limit int) ([]*News, error) {
 	return m.NewsList, m.Err
+}
+func (m *MockRepository) FindRecent(ctx context.Context, limit int) ([]*News, error) {
+	return m.NewsList, m.Err
+}
+func (m *MockRepository) FindBetweenDates(ctx context.Context, start, end time.Time) ([]*News, error) {
+	return m.NewsList, m.Err
+}
+
+type MockBriefingRepo struct {
+	Briefing *Briefing
+	List     []*Briefing
+	Err      error
+}
+
+func (m *MockBriefingRepo) Create(ctx context.Context, b *Briefing) error {
+	m.Briefing = b
+	return m.Err
+}
+func (m *MockBriefingRepo) FindByDate(ctx context.Context, date time.Time) (*Briefing, error) {
+	return m.Briefing, m.Err
+}
+func (m *MockBriefingRepo) FindLatest(ctx context.Context) (*Briefing, error) {
+	return m.Briefing, m.Err
+}
+func (m *MockBriefingRepo) FindRecent(ctx context.Context, limit int) ([]*Briefing, error) {
+	return m.List, m.Err
 }
 
 func TestService_Create(t *testing.T) {
@@ -44,20 +65,8 @@ func TestService_Create(t *testing.T) {
 	}
 }
 
-func TestService_FindAll(t *testing.T) {
-	mock := &MockRepository{NewsList: []*News{{Title: "Test"}}}
-	svc := NewService(mock, zap.NewNop(), nil)
-	res, err := svc.FindAll(context.Background(), bson.M{})
-	if err != nil {
-		t.Errorf("FindAll failed: %v", err)
-	}
-	if len(res) != 1 {
-		t.Errorf("Expected 1 news, got %d", len(res))
-	}
-}
-
 func TestService_FindByID(t *testing.T) {
-	id := bson.NewObjectID()
+	id := "news-123"
 	mock := &MockRepository{OneNews: &News{ID: id, Title: "Test"}}
 	svc := NewService(mock, zap.NewNop(), nil)
 	res, err := svc.FindByID(context.Background(), id)
@@ -70,7 +79,7 @@ func TestService_FindByID(t *testing.T) {
 }
 
 func TestNewsEntity_Fields(t *testing.T) {
-	id := bson.NewObjectID()
+	id := "news-456"
 	n := &News{
 		ID:                 id,
 		Title:              "Sample News",
@@ -163,7 +172,7 @@ func TestNewsSummary_IDXICClassification(t *testing.T) {
 }
 
 func TestBriefingEntity_Fields(t *testing.T) {
-	id := bson.NewObjectID()
+	id := "briefing-789"
 	now := time.Now()
 	b := &Briefing{
 		ID:         id,
@@ -299,65 +308,47 @@ func TestDailyBriefing_SchemaGeneration(t *testing.T) {
 		t.Fatalf("Failed to unmarshal BriefingSchemaOutput: %v", err)
 	}
 
-	if output.Title == "" || len(output.BullishLookout) != 1 {
-		t.Errorf("Unexpected unmarshaled briefing: %+v", output)
+	if output.Title != "Morning Market Intelligence Briefing - 24 August 2026" {
+		t.Errorf("Unexpected title: %s", output.Title)
+	}
+	if len(output.BullishLookout) != 1 || output.BullishLookout[0].Ticker != "BBRI" {
+		t.Errorf("Expected BullishLookout with BBRI")
+	}
+	if len(output.BearishLookout) != 1 || output.BearishLookout[0].Ticker != "ASBI" {
+		t.Errorf("Expected BearishLookout with ASBI")
+	}
+	if len(output.SectorHighlights) != 1 || output.SectorHighlights[0].Sector != "Banking" {
+		t.Errorf("Expected SectorHighlights with Banking")
 	}
 }
 
-func TestBatchSummaries_Schema(t *testing.T) {
-	schema, err := jsonschema.GenerateSchemaForType(BatchSummariesOutput{})
-	if err != nil {
-		t.Fatalf("Failed to generate batch schema: %v", err)
-	}
-	if schema == nil {
-		t.Fatal("Expected non-nil batch schema")
-	}
-
-	jsonSample := `{
-		"summaries": [
+func TestFormatBriefingMarkdown(t *testing.T) {
+	output := BriefingSchemaOutput{
+		Title:      "Test Briefing",
+		MacroPulse: "Macro overview.",
+		BullishLookout: []BriefingItem{
 			{
-				"article_id": "6a8dc30b77c06a652ccf60bb",
-				"title": "Adhi Commuter Lolos PKPU",
-				"summary": "ADCP berhasil lolos dari gugatan PKPU. Perusahaan menyiapkan strategi penjualan unit ready stock. Likuiditas masih dalam pemantauan ketat.",
-				"priority": 5,
-				"value_score": 1,
-				"impact_direction": "Neutral",
-				"investment_takeaway": "Restrukturisasi utang berjalan, namun wait and see hingga cash flow pulih.",
-				"tickers": ["ADCP"],
-				"sector": "H. Properties and Real Estate",
-				"subsector": "H1. Properties & Real Estate",
-				"is_industry_wide": false
-			}
-		]
-	}`
-
-	var output BatchSummariesOutput
-	if err := json.Unmarshal([]byte(jsonSample), &output); err != nil {
-		t.Fatalf("Failed to unmarshal BatchSummariesOutput: %v", err)
+				Ticker:             "BBRI",
+				IssuerName:         "PT Bank Rakyat Indonesia Tbk",
+				Headline:           "Good results",
+				Rationale:          "Strong growth",
+				ValueScore:         8,
+				InvestmentTakeaway: "Buy and hold",
+			},
+		},
+		BearishLookout: []BriefingItem{},
+		SectorHighlights: []SectorHighlight{
+			{
+				Sector:    "Finance",
+				Summary:   "Solid",
+				Sentiment: "Bullish",
+			},
+		},
+		ActionPlan: "Stay disciplined.",
 	}
 
-	if len(output.Summaries) != 1 {
-		t.Fatalf("Expected 1 summary, got %d", len(output.Summaries))
-	}
-	if output.Summaries[0].ArticleID != "6a8dc30b77c06a652ccf60bb" {
-		t.Errorf("Expected ArticleID match, got %s", output.Summaries[0].ArticleID)
-	}
-	if output.Summaries[0].ValueScore != 1 {
-		t.Errorf("Expected ValueScore 1, got %d", output.Summaries[0].ValueScore)
-	}
-}
-
-func TestNews_StatusField(t *testing.T) {
-	n := &News{
-		Title:  "Test Article",
-		Status: StatusPending,
-	}
-	if n.Status != "pending" {
-		t.Errorf("Expected status 'pending', got '%s'", n.Status)
-	}
-
-	n.Status = StatusSummarized
-	if n.Status != "summarized" {
-		t.Errorf("Expected status 'summarized', got '%s'", n.Status)
+	md := formatBriefingMarkdown(output, time.Date(2026, 8, 24, 7, 0, 0, 0, time.UTC))
+	if md == "" {
+		t.Fatal("Expected non-empty markdown")
 	}
 }

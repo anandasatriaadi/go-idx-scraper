@@ -16,7 +16,6 @@ import (
 	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
 	newsRepo "github.com/anandasatriaadi/go-idx-scraper/internal/infra/db/mongo"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/scraper/kontan"
-	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.uber.org/zap"
 )
 
@@ -128,7 +127,7 @@ func run() error {
 
 	logger.Info("Starting scrape window in GMT+8", zap.Time("start", startDate), zap.Time("end", endDate))
 
-	var ids []bson.ObjectID
+	var ids []string
 	err = scraper.Scrape(ctx, startDate, endDate, func(n *news.News) error {
 		// Idempotency: skip if already in MongoDB
 		exists, err := repo.ExistsByLink(ctx, n.Link)
@@ -152,7 +151,7 @@ func run() error {
 
 	// Summarize all pending unsummarized articles in optimized batches
 	pendingNews, pErr := repo.FindPendingSummary(ctx, 3000)
-	var targetIDs []bson.ObjectID
+	var targetIDs []string
 	if pErr == nil && len(pendingNews) > 0 {
 		for _, pn := range pendingNews {
 			targetIDs = append(targetIDs, pn.ID)

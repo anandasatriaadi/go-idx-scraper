@@ -3,9 +3,6 @@ package news
 import (
 	"context"
 	"time"
-
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 const (
@@ -15,24 +12,24 @@ const (
 )
 
 type News struct {
-	ID                 bson.ObjectID `bson:"_id,omitempty" json:"id"`
-	CreatedAt          time.Time     `bson:"created_at" json:"created_at"`
-	UpdatedAt          time.Time     `bson:"updated_at" json:"updated_at"`
-	Date               time.Time     `bson:"date" json:"date"`
-	Title              string        `bson:"title" json:"title"`
-	Summary            string        `bson:"summary" json:"summary"`
-	Content            string        `bson:"content" json:"content"`
-	Link               string        `bson:"link" json:"link"`
-	Priority           int           `bson:"priority" json:"priority"`
-	ValueScore         int           `bson:"value_score" json:"value_score"`
-	ImpactDirection    string        `bson:"impact_direction" json:"impact_direction"`
-	InvestmentTakeaway string        `bson:"investment_takeaway" json:"investment_takeaway"`
-	Tickers            []string      `bson:"tickers" json:"tickers"`
-	Sector             string        `bson:"sector" json:"sector"`
-	Subsector          string        `bson:"subsector" json:"subsector"`
-	Industry           string        `bson:"industry,omitempty" json:"industry,omitempty"`
-	IsIndustryWide     bool          `bson:"is_industry_wide" json:"is_industry_wide"`
-	Status             string        `bson:"status,omitempty" json:"status,omitempty"`
+	ID                 string    `bson:"_id,omitempty" json:"id"`
+	CreatedAt          time.Time `bson:"created_at" json:"created_at"`
+	UpdatedAt          time.Time `bson:"updated_at" json:"updated_at"`
+	Date               time.Time `bson:"date" json:"date"`
+	Title              string    `bson:"title" json:"title"`
+	Summary            string    `bson:"summary" json:"summary"`
+	Content            string    `bson:"content" json:"content"`
+	Link               string    `bson:"link" json:"link"`
+	Priority           int       `bson:"priority" json:"priority"`
+	ValueScore         int       `bson:"value_score" json:"value_score"`
+	ImpactDirection    string    `bson:"impact_direction" json:"impact_direction"`
+	InvestmentTakeaway string    `bson:"investment_takeaway" json:"investment_takeaway"`
+	Tickers            []string  `bson:"tickers" json:"tickers"`
+	Sector             string    `bson:"sector" json:"sector"`
+	Subsector          string    `bson:"subsector" json:"subsector"`
+	Industry           string    `bson:"industry,omitempty" json:"industry,omitempty"`
+	IsIndustryWide     bool      `bson:"is_industry_wide" json:"is_industry_wide"`
+	Status             string    `bson:"status,omitempty" json:"status,omitempty"`
 }
 
 type BriefingItem struct {
@@ -51,7 +48,7 @@ type SectorHighlight struct {
 }
 
 type Briefing struct {
-	ID               bson.ObjectID     `bson:"_id,omitempty" json:"id"`
+	ID               string            `bson:"_id,omitempty" json:"id"`
 	Date             time.Time         `bson:"date" json:"date"`
 	Title            string            `bson:"title" json:"title"`
 	MacroPulse       string            `bson:"macro_pulse" json:"macro_pulse"`
@@ -64,14 +61,30 @@ type Briefing struct {
 	UpdatedAt        time.Time         `bson:"updated_at" json:"updated_at"`
 }
 
+type NewsSummaryUpdate struct {
+	Title              string   `json:"title,omitempty"`
+	Summary            string   `json:"summary,omitempty"`
+	Priority           int      `json:"priority,omitempty"`
+	ValueScore         int      `json:"value_score,omitempty"`
+	ImpactDirection    string   `json:"impact_direction,omitempty"`
+	InvestmentTakeaway string   `json:"investment_takeaway,omitempty"`
+	Tickers            []string `json:"tickers,omitempty"`
+	Sector             string   `json:"sector,omitempty"`
+	Subsector          string   `json:"subsector,omitempty"`
+	Industry           string   `json:"industry,omitempty"`
+	IsIndustryWide     bool     `json:"is_industry_wide,omitempty"`
+	Status             string   `json:"status,omitempty"`
+}
+
 // Port: Repository defines news data persistence
 type Repository interface {
 	Create(ctx context.Context, news *News) error
-	FindAll(ctx context.Context, filter any, opts ...options.Lister[options.FindOptions]) ([]*News, error)
-	FindByID(ctx context.Context, id bson.ObjectID) (*News, error)
-	UpdateByID(ctx context.Context, id bson.ObjectID, update any) error
+	FindByID(ctx context.Context, id string) (*News, error)
+	UpdateSummary(ctx context.Context, id string, summary *NewsSummaryUpdate) error
 	ExistsByLink(ctx context.Context, link string) (bool, error)
 	FindPendingSummary(ctx context.Context, limit int) ([]*News, error)
+	FindRecent(ctx context.Context, limit int) ([]*News, error)
+	FindBetweenDates(ctx context.Context, start, end time.Time) ([]*News, error)
 }
 
 // Port: BriefingRepository defines briefing data persistence
@@ -79,7 +92,7 @@ type BriefingRepository interface {
 	Create(ctx context.Context, b *Briefing) error
 	FindByDate(ctx context.Context, date time.Time) (*Briefing, error)
 	FindLatest(ctx context.Context) (*Briefing, error)
-	FindAll(ctx context.Context, filter any, opts ...options.Lister[options.FindOptions]) ([]*Briefing, error)
+	FindRecent(ctx context.Context, limit int) ([]*Briefing, error)
 }
 
 // Port: Scraper defines news scraping interface

@@ -58,8 +58,9 @@ func (r *BriefingRepository) FindLatest(ctx context.Context) (*news.Briefing, er
 	return &result, nil
 }
 
-func (r *BriefingRepository) FindAll(ctx context.Context, filter any, opts ...options.Lister[options.FindOptions]) ([]*news.Briefing, error) {
-	cursor, err := r.collection.Find(ctx, filter, opts...)
+func (r *BriefingRepository) FindRecent(ctx context.Context, limit int) ([]*news.Briefing, error) {
+	opts := options.Find().SetSort(bson.D{{Key: "date", Value: -1}}).SetLimit(int64(limit))
+	cursor, err := r.collection.Find(ctx, bson.M{}, opts)
 	if err != nil {
 		return nil, err
 	}

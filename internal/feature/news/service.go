@@ -10,7 +10,6 @@ import (
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
 	"github.com/revrost/go-openrouter"
 	"github.com/revrost/go-openrouter/jsonschema"
-	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.uber.org/zap"
 )
 
@@ -32,11 +31,7 @@ func (s *Service) Create(ctx context.Context, n *News) error {
 	return s.repo.Create(ctx, n)
 }
 
-func (s *Service) FindAll(ctx context.Context, filter any) ([]*News, error) {
-	return s.repo.FindAll(ctx, filter)
-}
-
-func (s *Service) FindByID(ctx context.Context, id bson.ObjectID) (*News, error) {
+func (s *Service) FindByID(ctx context.Context, id string) (*News, error) {
 	return s.repo.FindByID(ctx, id)
 }
 
@@ -71,7 +66,7 @@ type BatchSummariesOutput struct {
 	Summaries []BatchItemSummary `json:"summaries" jsonschema:"description=List of structured evaluations for each article in the batch"`
 }
 
-func (s *Service) Summarize(ctx context.Context, ids []bson.ObjectID) error {
+func (s *Service) Summarize(ctx context.Context, ids []string) error {
 	s.logger.Info("Starting news batch summarization", zap.Int("num_ids", len(ids)))
 	if s.cfg == nil {
 		return fmt.Errorf("config not loaded")
@@ -104,11 +99,11 @@ func (s *Service) Summarize(ctx context.Context, ids []bson.ObjectID) error {
 		for _, id := range chunkIDs {
 			n, err := s.repo.FindByID(ctx, id)
 			if err != nil {
-				s.logger.Warn("Error finding news by ID", zap.String("id", id.Hex()), zap.Error(err))
+				s.logger.Warn("Error finding news by ID", zap.String("id", id), zap.Error(err))
 				continue
 			}
 			if n.Status == StatusSummarized || (n.Summary != "" && n.Status != StatusPending) {
-				s.logger.Debug("Article already summarized, skipping", zap.String("id", id.Hex()))
+				s.logger.Debug("Article already summarized, skipping", zap.String("id", id))
 				continue
 			}
 
@@ -119,7 +114,7 @@ func (s *Service) Summarize(ctx context.Context, ids []bson.ObjectID) error {
 			}
 
 			validArticles = append(validArticles, n)
-			promptArticles.WriteString(fmt.Sprintf("\n==============================\n[Article ID: %s]\nOriginal Title: %s\nContent:\n%s\n==============================\n", n.ID.Hex(), n.Title, content))
+			promptArticles.WriteString(fmt.Sprintf("\n==============================\n[Article ID: %s]\nOriginal Title: %s\nContent:\n%s\n==============================\n", n.ID, n.Title, content))
 		}
 
 		if len(validArticles) == 0 {
@@ -177,7 +172,7 @@ ARTICLES TO EVALUATE:
 			s.logger.Error("Error in batch chat completion", zap.Error(err))
 			// Mark batch articles as failed for future retry
 			for _, art := range validArticles {
-				_ = s.repo.UpdateByID(ctx, art.ID, bson.M{"$set": bson.M{"status": StatusFailed}})
+				_ = s.repo.UpdateSummary(ctx, art.ID, &NewsSummaryUpdate{Status: StatusFailed})
 			}
 			continue
 		}
@@ -201,11 +196,11 @@ ARTICLES TO EVALUATE:
 
 		// Persist each evaluated summary
 		for _, art := range validArticles {
-			sm, found := summariesMap[art.ID.Hex()]
+			sm, found := summariesMap[art.ID]
 			if !found {
-				// Try partial match if id hex prefix matched
+				// Try partial match if id prefix matched
 				for k, v := range summariesMap {
-					if strings.Contains(k, art.ID.Hex()) || strings.Contains(art.ID.Hex(), k) {
+					if strings.Contains(k, art.ID) || strings.Contains(art.ID, k) {
 						sm = v
 						found = true
 						break
@@ -214,34 +209,31 @@ ARTICLES TO EVALUATE:
 			}
 
 			if !found {
-				s.logger.Warn("Article not found in batch output", zap.String("id", art.ID.Hex()))
-				_ = s.repo.UpdateByID(ctx, art.ID, bson.M{"$set": bson.M{"status": StatusPending}})
+				s.logger.Warn("Article not found in batch output", zap.String("id", art.ID))
+				_ = s.repo.UpdateSummary(ctx, art.ID, &NewsSummaryUpdate{Status: StatusPending})
 				continue
 			}
 
-			update := bson.M{
-				"$set": bson.M{
-					"title":               sm.Title,
-					"summary":             sm.Summary,
-					"priority":            sm.Priority,
-					"value_score":         sm.ValueScore,
-					"impact_direction":    sm.ImpactDirection,
-					"investment_takeaway": sm.InvestmentTakeaway,
-					"tickers":             sm.Tickers,
-					"sector":              sm.Sector,
-					"subsector":           sm.Subsector,
-					"industry":            sm.Subsector,
-					"is_industry_wide":    sm.IsIndustryWide,
-					"status":              StatusSummarized,
-					"updated_at":          time.Now(),
-				},
+			update := &NewsSummaryUpdate{
+				Title:              sm.Title,
+				Summary:            sm.Summary,
+				Priority:           sm.Priority,
+				ValueScore:         sm.ValueScore,
+				ImpactDirection:    sm.ImpactDirection,
+				InvestmentTakeaway: sm.InvestmentTakeaway,
+				Tickers:            sm.Tickers,
+				Sector:             sm.Sector,
+				Subsector:          sm.Subsector,
+				Industry:           sm.Subsector,
+				IsIndustryWide:     sm.IsIndustryWide,
+				Status:             StatusSummarized,
 			}
 
-			if err := s.repo.UpdateByID(ctx, art.ID, update); err != nil {
-				s.logger.Error("Failed to update summarized news", zap.String("id", art.ID.Hex()), zap.Error(err))
+			if err := s.repo.UpdateSummary(ctx, art.ID, update); err != nil {
+				s.logger.Error("Failed to update summarized news", zap.String("id", art.ID), zap.Error(err))
 			} else {
 				s.logger.Info("Summarized & saved",
-					zap.String("id", art.ID.Hex()),
+					zap.String("id", art.ID),
 					zap.String("title", sm.Title),
 					zap.Int("value_score", sm.ValueScore),
 					zap.String("impact", sm.ImpactDirection),
@@ -257,7 +249,7 @@ ARTICLES TO EVALUATE:
 
 // SummarizeViaOpenRouterBatchAPI submits unsummarized articles to OpenRouter's asynchronous Batch API
 // to receive the 50% discount on token pricing and process large backfills without connection timeouts.
-func (s *Service) SummarizeViaOpenRouterBatchAPI(ctx context.Context, ids []bson.ObjectID) error {
+func (s *Service) SummarizeViaOpenRouterBatchAPI(ctx context.Context, ids []string) error {
 	s.logger.Info("Starting OpenRouter Batch API summarization (50% token discount)", zap.Int("num_ids", len(ids)))
 	if s.cfg == nil || s.cfg.OpenrouterApiKey == "" {
 		return fmt.Errorf("openrouter API key not configured")
@@ -301,7 +293,7 @@ Article:
 """`, n.Content)
 
 		batchRequests = append(batchRequests, BatchRequestItem{
-			CustomID: n.ID.Hex(),
+			CustomID: n.ID,
 			Body: BatchRequestBody{
 				Messages: []openrouter.ChatCompletionMessage{
 					{
@@ -368,8 +360,8 @@ Article:
 
 				successCount := 0
 				for _, resItem := range current.Results {
-					artID, err := bson.ObjectIDFromHex(resItem.CustomID)
-					if err != nil {
+					artID := resItem.CustomID
+					if artID == "" {
 						continue
 					}
 
@@ -377,33 +369,30 @@ Article:
 						var summary NewsSummary
 						text := resItem.Response.Body.Choices[0].Message.Content
 						if err := json.Unmarshal([]byte(text), &summary); err == nil {
-							update := bson.M{
-								"$set": bson.M{
-									"title":               summary.Title,
-									"summary":             summary.Summary,
-									"priority":            summary.Priority,
-									"value_score":         summary.ValueScore,
-									"impact_direction":    summary.ImpactDirection,
-									"investment_takeaway": summary.InvestmentTakeaway,
-									"tickers":             summary.Tickers,
-									"sector":              summary.Sector,
-									"subsector":           summary.Subsector,
-									"industry":            summary.Subsector,
-									"is_industry_wide":    summary.IsIndustryWide,
-									"status":              StatusSummarized,
-									"updated_at":          time.Now(),
-								},
+							update := &NewsSummaryUpdate{
+								Title:              summary.Title,
+								Summary:            summary.Summary,
+								Priority:           summary.Priority,
+								ValueScore:         summary.ValueScore,
+								ImpactDirection:    summary.ImpactDirection,
+								InvestmentTakeaway: summary.InvestmentTakeaway,
+								Tickers:            summary.Tickers,
+								Sector:             summary.Sector,
+								Subsector:          summary.Subsector,
+								Industry:           summary.Subsector,
+								IsIndustryWide:     summary.IsIndustryWide,
+								Status:             StatusSummarized,
 							}
-							if err := s.repo.UpdateByID(ctx, artID, update); err == nil {
+							if err := s.repo.UpdateSummary(ctx, artID, update); err == nil {
 								successCount++
 							}
 						}
 					} else if resItem.Error != nil {
-						_ = s.repo.UpdateByID(ctx, artID, bson.M{"$set": bson.M{"status": StatusFailed}})
+						_ = s.repo.UpdateSummary(ctx, artID, &NewsSummaryUpdate{Status: StatusFailed})
 					}
 				}
 
-				s.logger.Info("Finished updating batch articles in MongoDB",
+				s.logger.Info("Finished updating batch articles in repository",
 					zap.Int("success_count", successCount),
 					zap.Int("total_batch", len(current.Results)),
 				)
@@ -437,13 +426,7 @@ func (s *Service) GenerateDailyBriefing(ctx context.Context, targetDate time.Tim
 	startOfWindow := time.Date(startWindow.Year(), startWindow.Month(), startWindow.Day(), 0, 0, 0, 0, targetDate.Location())
 	endOfWindow := time.Date(targetDate.Year(), targetDate.Month(), targetDate.Day(), 23, 59, 59, 999999999, targetDate.Location())
 
-	filter := bson.M{
-		"created_at": bson.M{
-			"$gte": startOfWindow,
-			"$lte": endOfWindow,
-		},
-	}
-	newsList, err := s.repo.FindAll(ctx, filter)
+	newsList, err := s.repo.FindBetweenDates(ctx, startOfWindow, endOfWindow)
 	if err != nil {
 		return nil, fmt.Errorf("fetching 24h news: %w", err)
 	}
@@ -522,7 +505,6 @@ Based on all the news collected over the past 24 hours below, synthesize an auth
 	rawMarkdown := formatBriefingMarkdown(output, targetDate)
 
 	briefing := &Briefing{
-		ID:               bson.NewObjectID(),
 		Date:             targetDate,
 		Title:            output.Title,
 		MacroPulse:       output.MacroPulse,
@@ -537,9 +519,9 @@ Based on all the news collected over the past 24 hours below, synthesize an auth
 
 	if bRepo != nil {
 		if err := bRepo.Create(ctx, briefing); err != nil {
-			s.logger.Error("Failed to persist briefing in MongoDB", zap.Error(err))
+			s.logger.Error("Failed to persist briefing in repository", zap.Error(err))
 		} else {
-			s.logger.Info("Successfully saved Daily Briefing in MongoDB", zap.String("id", briefing.ID.Hex()))
+			s.logger.Info("Successfully saved Daily Briefing", zap.String("title", briefing.Title))
 		}
 	}
 

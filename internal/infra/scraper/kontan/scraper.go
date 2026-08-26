@@ -178,7 +178,7 @@ func (s *Scraper) Scrape(ctx context.Context, startDate, endDate time.Time, onNe
 					}
 
 					n := &news.News{
-						ID:       bson.NewObjectID(),
+						ID:       bson.NewObjectID().Hex(),
 						Title:    art.Title,
 						Date:     dateParsed,
 						Summary:  "",

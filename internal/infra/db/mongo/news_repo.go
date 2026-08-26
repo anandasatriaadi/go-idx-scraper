@@ -36,29 +36,65 @@ func (r *NewsRepository) Create(ctx context.Context, model *news.News) error {
 	return err
 }
 
+func idFilter(id string) bson.M {
+	if objID, err := bson.ObjectIDFromHex(id); err == nil {
+		return bson.M{"$or": []bson.M{{"_id": objID}, {"_id": id}}}
+	}
+	return bson.M{"_id": id}
+}
+
 // FindByID retrieves a document by its _id
-func (r *NewsRepository) FindByID(ctx context.Context, id bson.ObjectID) (*news.News, error) {
+func (r *NewsRepository) FindByID(ctx context.Context, id string) (*news.News, error) {
 	var model news.News
-	err := r.collection.FindOne(ctx, bson.M{"_id": id}).Decode(&model)
+	err := r.collection.FindOne(ctx, idFilter(id)).Decode(&model)
 	if err != nil {
 		return nil, err
 	}
 	return &model, nil
 }
 
-// FindAll retrieves all documents matching a filter
-func (r *NewsRepository) FindAll(ctx context.Context, filter any, opts ...options.Lister[options.FindOptions]) ([]*news.News, error) {
-	cursor, err := r.collection.Find(ctx, filter, opts...)
-	if err != nil {
-		return nil, err
+// UpdateSummary updates structured summary fields for a news item
+func (r *NewsRepository) UpdateSummary(ctx context.Context, id string, summary *news.NewsSummaryUpdate) error {
+	setFields := bson.M{
+		"updated_at": time.Now(),
 	}
-	defer cursor.Close(ctx)
+	if summary.Title != "" {
+		setFields["title"] = summary.Title
+	}
+	if summary.Summary != "" {
+		setFields["summary"] = summary.Summary
+	}
+	if summary.Priority != 0 {
+		setFields["priority"] = summary.Priority
+	}
+	if summary.ValueScore != 0 {
+		setFields["value_score"] = summary.ValueScore
+	}
+	if summary.ImpactDirection != "" {
+		setFields["impact_direction"] = summary.ImpactDirection
+	}
+	if summary.InvestmentTakeaway != "" {
+		setFields["investment_takeaway"] = summary.InvestmentTakeaway
+	}
+	if summary.Tickers != nil {
+		setFields["tickers"] = summary.Tickers
+	}
+	if summary.Sector != "" {
+		setFields["sector"] = summary.Sector
+	}
+	if summary.Subsector != "" {
+		setFields["subsector"] = summary.Subsector
+	}
+	if summary.Industry != "" {
+		setFields["industry"] = summary.Industry
+	}
+	setFields["is_industry_wide"] = summary.IsIndustryWide
+	if summary.Status != "" {
+		setFields["status"] = summary.Status
+	}
 
-	var results []*news.News
-	if err = cursor.All(ctx, &results); err != nil {
-		return nil, err
-	}
-	return results, nil
+	_, err := r.collection.UpdateOne(ctx, idFilter(id), bson.M{"$set": setFields})
+	return err
 }
 
 // ExistsByLink checks if an article with the given link already exists in MongoDB
@@ -70,9 +106,7 @@ func (r *NewsRepository) ExistsByLink(ctx context.Context, link string) (bool, e
 	return count > 0, nil
 }
 
-// FindPendingSummary retrieves news articles that genuinely need summarization
-// (explicitly pending, failed, or lacking a summary while not already marked summarized).
-// This guarantees that legacy articles with existing summaries are NOT re-processed.
+// FindPendingSummary retrieves news articles that need summarization
 func (r *NewsRepository) FindPendingSummary(ctx context.Context, limit int) ([]*news.News, error) {
 	filter := bson.M{
 		"$and": []bson.M{
@@ -88,33 +122,52 @@ func (r *NewsRepository) FindPendingSummary(ctx context.Context, limit int) ([]*
 		},
 	}
 	opts := options.Find().SetSort(bson.D{{Key: "date", Value: -1}}).SetLimit(int64(limit))
-	return r.FindAll(ctx, filter, opts)
+	cursor, err := r.collection.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var results []*news.News
+	if err = cursor.All(ctx, &results); err != nil {
+		return nil, err
+	}
+	return results, nil
 }
 
-// UpdateByID updates a document by ID
-func (r *NewsRepository) UpdateByID(ctx context.Context, id bson.ObjectID, update any) error {
-	var updateDoc bson.M
-	switch v := update.(type) {
-	case bson.M:
-		updateDoc = v
-	case map[string]any:
-		updateDoc = bson.M(v)
-	default:
-		_, err := r.collection.UpdateOne(ctx, bson.M{"_id": id}, update)
-		return err
+// FindRecent retrieves the latest news articles up to limit
+func (r *NewsRepository) FindRecent(ctx context.Context, limit int) ([]*news.News, error) {
+	opts := options.Find().SetSort(bson.D{{Key: "date", Value: -1}}).SetLimit(int64(limit))
+	cursor, err := r.collection.Find(ctx, bson.M{}, opts)
+	if err != nil {
+		return nil, err
 	}
+	defer cursor.Close(ctx)
 
-	if setVal, exists := updateDoc["$set"]; exists {
-		switch s := setVal.(type) {
-		case bson.M:
-			s["updated_at"] = time.Now()
-		case map[string]any:
-			s["updated_at"] = time.Now()
-		}
-	} else {
-		updateDoc["$set"] = bson.M{"updated_at": time.Now()}
+	var results []*news.News
+	if err = cursor.All(ctx, &results); err != nil {
+		return nil, err
 	}
+	return results, nil
+}
 
-	_, err := r.collection.UpdateOne(ctx, bson.M{"_id": id}, updateDoc)
-	return err
+// FindBetweenDates retrieves news articles published between start and end dates
+func (r *NewsRepository) FindBetweenDates(ctx context.Context, start, end time.Time) ([]*news.News, error) {
+	filter := bson.M{
+		"created_at": bson.M{
+			"$gte": start,
+			"$lte": end,
+		},
+	}
+	cursor, err := r.collection.Find(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var results []*news.News
+	if err = cursor.All(ctx, &results); err != nil {
+		return nil, err
+	}
+	return results, nil
 }
