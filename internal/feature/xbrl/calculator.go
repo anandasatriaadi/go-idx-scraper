@@ -161,23 +161,25 @@ func ComputeValuationAndRatios(stmt *Statement, priorStmt *Statement, currentSto
 		shares = 1.0
 	}
 
-	// Always compute normalized EPS directly from effectiveNetIncome and shares for mathematical consistency with BVPS
-	if shares > 1 && effectiveNetIncome != 0 {
-		v.NormalizedEPS = (effectiveNetIncome * fxRate) / shares
-	} else if stmt.Metadata.Currency == "USD" && v.NormalizedEPS > 0 {
-		v.NormalizedEPS = v.NormalizedEPS * fxRate
-	}
-
-	if shares > 1 {
+	if shares > 1000 {
+		if effectiveNetIncome != 0 {
+			v.NormalizedEPS = (effectiveNetIncome * fxRate) / shares
+		} else if stmt.Metadata.Currency == "USD" && v.NormalizedEPS > 0 {
+			v.NormalizedEPS = v.NormalizedEPS * fxRate
+		}
 		v.NormalizedBVPS = (c.TotalEquity * fxRate) / shares
 		v.RevenuePerShare = (c.Revenue * fxRate) / shares
 		v.CashPerShare = (c.CashAndEquivalents * fxRate) / shares
 		v.FreeCashFlowPerShare = (c.FreeCashFlow * fxRate) / shares
-	}
 
-	// 7. Benjamin Graham Fair Value Formula
-	if v.NormalizedEPS > 0 && v.NormalizedBVPS > 0 {
-		v.GrahamNumber = math.Sqrt(22.5 * v.NormalizedEPS * v.NormalizedBVPS)
+		// 7. Benjamin Graham Fair Value Formula
+		if v.NormalizedEPS > 0 && v.NormalizedBVPS > 0 {
+			v.GrahamNumber = math.Sqrt(22.5 * v.NormalizedEPS * v.NormalizedBVPS)
+		}
+	} else {
+		v.NormalizedEPS = 0
+		v.NormalizedBVPS = 0
+		v.GrahamNumber = 0
 	}
 
 	// 8. Valuation Multiples & Margin of Safety

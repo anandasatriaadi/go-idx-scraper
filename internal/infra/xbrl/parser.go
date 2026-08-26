@@ -428,7 +428,17 @@ func finalizeCoreFinancials(s *domain.Statement) {
 		c.EBITDA = c.OperatingIncome + (c.CapEx * 0.7) // Estimate D&A if not explicitly separated
 	}
 	if c.SharesOutstanding == 0 {
-		for _, tag := range []string{"NumberOfIssuedAndFullyPaidShares", "WeightedAverageShares", "NumberOfSharesOutstanding", "IssuedAndFullyPaidShares"} {
+		for _, tag := range []string{
+			"NumberOfIssuedAndFullyPaidShares",
+			"WeightedAverageShares",
+			"NumberOfSharesOutstanding",
+			"IssuedAndFullyPaidShares",
+			"CommonStocksNumberOfShares",
+			"EntitySharesOutstanding",
+			"CapitalStockNumberOfShares",
+			"TotalShares",
+			"SharesOutstanding",
+		} {
 			if m, ok := s.Facts[tag]; ok {
 				for _, fv := range m {
 					if fv.Value > 1000 {
