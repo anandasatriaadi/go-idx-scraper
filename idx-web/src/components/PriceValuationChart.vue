@@ -1249,13 +1249,13 @@ const formatFullDate = (d?: string | Date) => {
 
 <style scoped>
 .price-chart-card {
-  background: var(--bg-app);
-  border: 1px solid var(--border-color);
+  background: #0f172a;
+  border: 1px solid #1e293b;
   border-radius: 10px;
-  padding: 16px 20px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .chart-header-row {

@@ -2146,6 +2146,12 @@ const formatDate = (dateStr?: string) => {
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') {
+    emit('close')
+  }
+}
+
 watch(() => props.ticker, () => {
   fetchFinancials()
 }, { immediate: true })
@@ -2154,15 +2160,21 @@ watch(activeModalTab, (tab) => {
   if (tab === 'news' && sectorNews.value.length === 0) {
     fetchSectorNews()
   }
+  if (typeof document !== 'undefined') {
+    const body = document.querySelector('.modal-body')
+    if (body) body.scrollTop = 0
+  }
 })
 
 onMounted(() => {
+  window.addEventListener('keydown', handleKeydown)
   if (typeof document !== 'undefined') {
     document.body.style.overflow = 'hidden'
   }
 })
 
 onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown)
   if (typeof document !== 'undefined') {
     document.body.style.overflow = ''
   }
@@ -2173,14 +2185,14 @@ onUnmounted(() => {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(3, 7, 18, 0.92);
+  background: rgba(3, 7, 18, 0.90);
   backdrop-filter: blur(10px);
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   z-index: 100;
-  padding: 24px 16px;
-  overflow-y: auto;
+  padding: 16px;
+  overflow: hidden;
 }
 .modal-card {
   background: #090e17;
@@ -2188,14 +2200,15 @@ onUnmounted(() => {
   border-radius: 12px;
   width: 100%;
   max-width: 1440px;
-  min-height: auto;
+  height: calc(100vh - 32px);
+  max-height: 96vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.95);
-  margin: auto;
 }
 .modal-header {
-  padding: 20px 28px;
+  padding: 16px 24px;
   border-bottom: 1px solid #1e293b;
   background: #0d1424;
   border-top-left-radius: 12px;
@@ -2203,6 +2216,7 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
 }
 .title-row {
   display: flex;
@@ -2213,27 +2227,27 @@ onUnmounted(() => {
   background: #2563eb;
   color: #fff;
   font-weight: 800;
-  font-size: 1rem;
-  padding: 4px 10px;
-  border-radius: 6px;
+  font-size: 0.95rem;
+  padding: 3px 8px;
+  border-radius: 4px;
 }
 .company-name {
-  font-size: 1.4rem;
+  font-size: 1.3rem;
   font-weight: 700;
   color: #f8fafc;
 }
 .meta-tags {
   display: flex;
-  gap: 10px;
-  margin-top: 8px;
+  gap: 8px;
+  margin-top: 6px;
   flex-wrap: wrap;
 }
 .tag {
   background: #090e17;
   border: 1px solid #1e293b;
   color: #94a3b8;
-  font-size: 0.75rem;
-  padding: 3px 10px;
+  font-size: 0.72rem;
+  padding: 2px 8px;
   border-radius: 4px;
 }
 .sector-tag {
@@ -2246,8 +2260,8 @@ onUnmounted(() => {
   border-radius: 6px;
   color: #94a3b8;
   font-size: 1.1rem;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2262,24 +2276,26 @@ onUnmounted(() => {
 .modal-tab-bar {
   display: flex;
   background: #0a101d;
-  padding: 10px 28px;
-  gap: 10px;
+  padding: 8px 24px;
+  gap: 8px;
   border-bottom: 1px solid #1e293b;
-  flex-wrap: wrap;
+  flex-shrink: 0;
+  overflow-x: auto;
 }
 .modal-tab-btn {
   background: #0f172a;
   border: 1px solid #1e293b;
   color: #94a3b8;
-  padding: 8px 16px;
-  font-size: 0.82rem;
+  padding: 6px 14px;
+  font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
   border-radius: 6px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 .modal-tab-btn:hover {
   color: #f8fafc;
@@ -2313,12 +2329,24 @@ onUnmounted(() => {
   padding: 24px;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
+  overscroll-behavior: contain;
 }
 .matrix-layout {
   display: grid;
-  grid-template-columns: 320px 1fr 340px;
+  grid-template-columns: 290px minmax(0, 1fr) 290px;
   gap: 20px;
   align-items: start;
+}
+@media (max-width: 1280px) {
+  .matrix-layout {
+    grid-template-columns: 270px minmax(0, 1fr);
+  }
+}
+@media (max-width: 900px) {
+  .matrix-layout {
+    grid-template-columns: 1fr;
+  }
 }
 .matrix-col {
   display: flex;
@@ -2326,8 +2354,8 @@ onUnmounted(() => {
   gap: 16px;
 }
 .metric-card {
-  background: var(--bg-app);
-  border: 1px solid var(--border-color);
+  background: #0f172a;
+  border: 1px solid #1e293b;
   border-radius: 8px;
   padding: 16px;
 }
