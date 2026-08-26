@@ -8,7 +8,6 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-//go:generate go run ../../../tools/mongo_repo/main.go -type=Announcement -collection=announcements
 type Announcement struct {
 	CreatedAt         time.Time           `json:"created_at" bson:"created_at"`
 	UpdatedAt         time.Time           `json:"updated_at" bson:"updated_at"`
