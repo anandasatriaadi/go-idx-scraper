@@ -54,12 +54,14 @@
 
     <!-- Modals -->
     <ArticleModal
+      v-if="selectedArticle"
       :article="selectedArticle"
       @close="selectedArticle = null"
       @filter-ticker="handleTickerClick"
     />
 
     <TickerFinancialsModal
+      v-if="selectedTickerForFinancials"
       :ticker="selectedTickerForFinancials"
       @close="closeTicker"
     />

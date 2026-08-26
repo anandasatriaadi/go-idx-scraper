@@ -1359,40 +1359,43 @@
         </div>
 
         <!-- 4. RELATED SECTOR NEWS TAB -->
-        <div v-else-if="activeModalTab === 'news'" class="sector-news-tab">
-          <div class="news-tab-header">
+        <div v-else-if="activeModalTab === 'news'" class="sector-news-tab space-y-4">
+          <div class="flex items-center justify-between border-b border-border/60 pb-3">
             <div>
-              <h3 class="news-tab-title font-mono">Related Industry & Sector Intelligence</h3>
-              <p class="news-tab-sub">Stream of news developments affecting {{ latestStatement?.metadata?.sector || 'the sector' }}</p>
+              <h3 class="text-sm font-bold font-mono text-foreground">Related Industry & Sector Intelligence</h3>
+              <p class="text-xs text-muted-foreground">Stream of news developments affecting {{ latestStatement?.metadata?.sector || 'the sector' }}</p>
             </div>
             <button class="btn-refresh font-mono" @click="fetchSectorNews">🔄 Refresh Stream</button>
           </div>
 
           <div v-if="loadingNews" class="loading-state font-mono">Loading related news...</div>
           <div v-else-if="sectorNews.length === 0" class="empty-state font-mono">No news articles found for this sector.</div>
-          <div v-else class="news-cards-list">
-            <article v-for="item in sectorNews" :key="item.id || item._id" class="sector-news-card">
-              <div class="card-meta font-mono">
-                <span :class="['sentiment-tag', item.impact_direction?.toLowerCase()]">{{ item.impact_direction || 'Neutral' }}</span>
-                <span class="score-tag font-mono">Score: {{ (item.value_score && item.value_score > 0 ? '+' : '') + (item.value_score || 0) }}</span>
-                <span class="date">{{ formatDate(item.date || item.created_at) }}</span>
-              </div>
-              <h4 class="card-headline">{{ item.title }}</h4>
-              <p class="card-summary">{{ item.summary }}</p>
-              <div v-if="item.investment_takeaway" class="card-takeaway">
-                💡 {{ item.investment_takeaway }}
-              </div>
-            </article>
+          <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <NewsCard
+              v-for="item in sectorNews"
+              :key="item.id || item._id"
+              :news="item"
+              @read="selectedArticleForModal = item"
+            />
           </div>
         </div>
       </div>
+
+      <!-- Nested Article Read Modal if opened from sector news -->
+      <ArticleModal
+        v-if="selectedArticleForModal"
+        :article="selectedArticleForModal"
+        @close="selectedArticleForModal = null"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import PriceValuationChart from './PriceValuationChart.vue'
+import NewsCard from './NewsCard.vue'
+import ArticleModal from './ArticleModal.vue'
 import type { XBRLStatement, News } from '../server/utils/types'
 
 const props = defineProps<{
@@ -1403,6 +1406,7 @@ defineEmits<{
   (e: 'close'): void
 }>()
 
+const selectedArticleForModal = ref<News | null>(null)
 const activeModalTab = ref<'terminal' | 'moat' | 'chart' | 'news'>('terminal')
 const matrixMetric = ref<'net_income' | 'revenue' | 'fcf' | 'cfo' | 'dividends' | 'roic' | 'roe' | 'op_margin' | 'gross_margin' | 'invested_capital'>('net_income')
 

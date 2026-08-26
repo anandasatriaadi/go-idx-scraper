@@ -79,46 +79,13 @@
     </div>
     <div v-else class="space-y-6">
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card
+        <NewsCard
           v-for="item in filteredList"
           :key="item.id"
-          class="group cursor-pointer border-border bg-card transition-all hover:border-primary/50 hover:bg-card/80 hover:shadow-md flex flex-col justify-between"
-          @click="$emit('read-article', item)"
-        >
-          <CardHeader class="pb-2">
-            <div class="flex items-center justify-between gap-2 mb-2">
-              <div class="flex flex-wrap items-center gap-1.5">
-                <span v-if="item.tickers && item.tickers.length > 0" class="font-mono text-xs font-bold text-primary">
-                  ${{ item.tickers.join(', $') }}
-                </span>
-                <Badge v-if="item.sector" variant="outline" class="text-[10px] px-1.5 py-0">
-                  {{ item.sector }}
-                </Badge>
-              </div>
-              <Badge :variant="getBadgeVariant(item.value_score)">
-                {{ (item.value_score && item.value_score > 0 ? '+' : '') + (item.value_score || 0) }}
-              </Badge>
-            </div>
-
-            <CardTitle class="text-sm font-semibold leading-snug line-clamp-2 text-foreground group-hover:text-primary transition-colors">
-              {{ item.title }}
-            </CardTitle>
-          </CardHeader>
-
-          <CardContent class="space-y-2 pb-3">
-            <p class="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
-              {{ item.summary }}
-            </p>
-            <div v-if="item.investment_takeaway" class="text-[11px] text-emerald-400/90 font-medium bg-emerald-500/10 p-2 rounded border border-emerald-500/20 line-clamp-2">
-              💡 {{ item.investment_takeaway }}
-            </div>
-          </CardContent>
-
-          <CardFooter class="pt-0 border-t border-border/40 mt-auto flex items-center justify-between text-[11px] font-mono text-muted-foreground">
-            <span>{{ formatDate(item.date || item.created_at) }}</span>
-            <span class="text-primary opacity-0 group-hover:opacity-100 transition-opacity">Read Full →</span>
-          </CardFooter>
-        </Card>
+          :news="item"
+          @read="$emit('read-article', item)"
+          @filter-ticker="tickerFilter = $event; onFilterChanged()"
+        />
       </div>
 
       <!-- Pagination Controls -->
@@ -154,10 +121,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { Newspaper, Search } from 'lucide-vue-next'
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import NewsCard from '@/components/NewsCard.vue'
 import type { News } from '@/server/utils/types'
 
 const IDX_IC_TAXONOMY: Record<string, string[]> = {

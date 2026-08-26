@@ -151,43 +151,13 @@
         No news articles matching current filter.
       </div>
       <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card
+        <NewsCard
           v-for="item in filteredNews"
           :key="item.id"
-          class="group cursor-pointer border-border bg-card transition-all hover:border-primary/50 hover:bg-card/80 hover:shadow-md flex flex-col justify-between"
-          @click="$emit('read-article', item)"
-        >
-          <CardHeader class="pb-2">
-            <div class="flex items-center justify-between gap-2 mb-2">
-              <div class="flex flex-wrap items-center gap-1.5">
-                <span v-if="item.tickers && item.tickers.length > 0" class="font-mono text-xs font-bold text-primary">
-                  ${{ item.tickers.join(', $') }}
-                </span>
-                <Badge v-if="item.industry" variant="secondary" class="text-[10px] px-1.5 py-0">
-                  {{ item.industry }}
-                </Badge>
-              </div>
-              <Badge :variant="getBadgeVariant(item.value_score)">
-                {{ (item.value_score && item.value_score > 0 ? '+' : '') + (item.value_score || 0) }}
-              </Badge>
-            </div>
-
-            <CardTitle class="text-sm font-semibold leading-snug line-clamp-2 text-foreground group-hover:text-primary transition-colors">
-              {{ item.title }}
-            </CardTitle>
-          </CardHeader>
-
-          <CardContent class="pb-3">
-            <p class="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
-              {{ item.summary }}
-            </p>
-          </CardContent>
-
-          <CardFooter class="pt-0 border-t border-border/40 mt-auto flex items-center justify-between text-[11px] font-mono text-muted-foreground">
-            <span>{{ formatDate(item.date || item.created_at) }}</span>
-            <span class="text-primary opacity-0 group-hover:opacity-100 transition-opacity">Read Analysis →</span>
-          </CardFooter>
-        </Card>
+          :news="item"
+          @read="$emit('read-article', item)"
+          @filter-ticker="$emit('filter-ticker', $event)"
+        />
       </div>
     </section>
   </div>
@@ -196,9 +166,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { TrendingUp, AlertTriangle, Compass, Newspaper } from 'lucide-vue-next'
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card'
+import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import NewsCard from '@/components/NewsCard.vue'
 import type { Briefing, News } from '@/server/utils/types'
 
 const props = defineProps<{
