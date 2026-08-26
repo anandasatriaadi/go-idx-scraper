@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/common"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 type Announcement struct {
@@ -31,9 +30,11 @@ type Announcement struct {
 // Port: Repository defines data persistence interface (Output Port)
 type Repository interface {
 	Create(ctx context.Context, announcement *Announcement) error
-	FindAll(ctx context.Context, filter any, opts ...options.Lister[options.FindOptions]) ([]*Announcement, error)
 	FindByID(ctx context.Context, id string) (*Announcement, error)
 	Exists(ctx context.Context, id string) (bool, error)
+	FindRecent(ctx context.Context, limit int) ([]*Announcement, error)
+	GetLatestCreatedDate(ctx context.Context) (*time.Time, error)
+	FindExistingIDs(ctx context.Context, limit int) (map[string]bool, error)
 }
 
 // Port: IDXDataProvider defines interface for IDX API data fetching and parsing (External Service)

@@ -7,9 +7,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"regexp"
 	"runtime"
-	"strings"
 	"syscall"
 	"time"
 
@@ -20,16 +18,11 @@ import (
 	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/db/mongo"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/idx"
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.uber.org/zap"
 )
 
-var nonAlphaRegex = regexp.MustCompile(`[^a-zA-Z]`)
-
 func main() {
 	if err := run(); err != nil {
-		// Logger might not be initialized yet if run fails early
 		log.Printf("Application failed: %v", err)
 		os.Exit(1)
 	}
@@ -108,10 +101,6 @@ func run() error {
 				tempDate := ldate.Add(-8 * time.Hour)
 				latestDate = &tempDate
 				logger.Info("Loaded latestDate from last run", zap.Time("latestDate", *latestDate))
-			} else if ldateBson, ok := lr.Metadata["latest_date"].(bson.DateTime); ok {
-				tempDate := ldateBson.Time().Add(-8 * time.Hour)
-				latestDate = &tempDate
-				logger.Info("Loaded latestDate from last run", zap.Time("latestDate", *latestDate))
 			}
 		}
 	}
@@ -119,56 +108,20 @@ func run() error {
 	dateTo := time.Now().AddDate(0, 0, 1).Format("20060102")
 	logger.Info("Starting data scrape", zap.String("dateFrom", dateFrom), zap.String("dateTo", dateTo))
 
-	// Use the IDXProvider adapter to fetch and parse announcements
-	announcements, err := idxProvider.Fetch(ctx, dateFrom, dateTo)
+	// Sync disclosures through the application service use case
+	filtered, err := annSvc.SyncDisclosures(ctx, dateFrom, dateTo, idxProvider, latestDate)
 	if err != nil {
-		logger.Error("Failed to fetch announcements from IDX", zap.Error(err))
+		logger.Error("Failed to sync disclosures", zap.Error(err))
 		return err
 	}
-	logger.Info("Announcements fetched successfully", zap.Int("count", len(announcements)))
-
-	existingDocs, err := aRepo.FindAll(ctx, bson.M{}, options.Find().SetProjection(bson.D{{Key: "_id", Value: 1}}).SetSort(bson.M{"created_date": -1}).SetLimit(500))
-	if err != nil {
-		logger.Error("Failed to check existing announcements", zap.Error(err))
-		return err
-	}
-	exists := make(map[string]bool)
-	for _, doc := range existingDocs {
-		exists[doc.ID] = true
-	}
-
-	var filtered []*announcement.Announcement
-	for _, ann := range announcements {
-		if ann.CreatedDate == nil {
-			continue
-		}
-		if (latestDate == nil || ann.CreatedDate.After(*latestDate)) && !exists[ann.ID] {
-			logger.Info("New announcement found", zap.String("ID", ann.ID), zap.Time("CreatedDate", *ann.CreatedDate))
-			filtered = append(filtered, ann)
-		}
-	}
-	logger.Info("Announcements filtered", zap.Int("new", len(filtered)))
 
 	if len(filtered) == 0 {
 		logger.Info("No new announcements to create")
 	} else {
-		for _, f := range filtered {
-			if err := aRepo.Create(ctx, f); err != nil {
-				logger.Error("Failed to create announcement", zap.String("ID", f.ID), zap.Error(err))
-			}
-			if err := annSvc.ProcessFinancialReportAnnouncement(ctx, f); err != nil {
-				logger.Error("Failed to process finreport announcement", zap.String("ID", f.ID), zap.Error(err))
-			}
-		}
-		logger.Info("Announcements created", zap.Int("count", len(filtered)))
-
-		latestAnnDocs, err := aRepo.FindAll(ctx, bson.M{}, options.Find().SetSort(bson.M{"created_date": -1}).SetLimit(1))
+		latestDate, err = annSvc.GetLatestCreatedDate(ctx)
 		if err != nil {
-			logger.Error("Failed to get latest announcement", zap.Error(err))
+			logger.Error("Failed to get latest announcement date", zap.Error(err))
 			return err
-		}
-		if len(latestAnnDocs) > 0 {
-			latestDate = latestAnnDocs[0].CreatedDate
 		}
 
 		lastRun := &system.LastRun{
@@ -182,34 +135,7 @@ func run() error {
 		}
 		logger.Info("Last run saved")
 
-		excludedTitles := []string{
-			"laporanbulananregistrasipemegangefek",
-			"penjelasanatasvolatilitastransaksi",
-			"penyampaianbuktiiklan",
-		}
-
-		var emailFiltered []*announcement.Announcement
-		for _, ann := range filtered {
-			if ann.JudulPengumuman != nil {
-				normalizedTitle := nonAlphaRegex.ReplaceAllString(*ann.JudulPengumuman, "")
-				normalizedTitle = strings.TrimSpace(normalizedTitle)
-				normalizedTitle = strings.ToLower(normalizedTitle)
-
-				excluded := false
-				for _, pattern := range excludedTitles {
-					if strings.HasPrefix(normalizedTitle, pattern) {
-						excluded = true
-						logger.Info("Announcement excluded from email", zap.String("title", *ann.JudulPengumuman))
-						break
-					}
-				}
-				if !excluded {
-					emailFiltered = append(emailFiltered, ann)
-				}
-			} else {
-				emailFiltered = append(emailFiltered, ann)
-			}
-		}
+		emailFiltered := annSvc.FilterDisclosuresForEmail(filtered)
 
 		if len(emailFiltered) > 0 {
 			const batchSize = 50
