@@ -15,6 +15,8 @@ type FinancialReportRepository struct {
 	collection *mongo.Collection
 }
 
+var _ finreport.Repository = (*FinancialReportRepository)(nil)
+
 func NewFinancialReportRepository(db *mongo.Database) finreport.Repository {
 	repo := &FinancialReportRepository{
 		collection: db.Collection("financial_reports"),

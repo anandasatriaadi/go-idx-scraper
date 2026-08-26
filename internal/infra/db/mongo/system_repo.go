@@ -14,6 +14,8 @@ type SystemRepository struct {
 	collection *mongo.Collection
 }
 
+var _ system.Repository = (*SystemRepository)(nil)
+
 func NewSystemRepository(db *mongo.Database) system.Repository {
 	return &SystemRepository{
 		collection: db.Collection("last_runs"),
@@ -56,41 +58,3 @@ func (r *SystemRepository) SaveLastRun(ctx context.Context, lastRun *system.Last
 	return err
 }
 
-func (r *SystemRepository) FindOne(ctx context.Context, filter any, opts ...options.Lister[options.FindOneOptions]) (*system.LastRun, error) {
-	var model system.LastRun
-	err := r.collection.FindOne(ctx, filter, opts...).Decode(&model)
-	if err != nil {
-		return nil, err
-	}
-	return &model, nil
-}
-
-func (r *SystemRepository) UpdateOne(ctx context.Context, filter any, update any, opts ...options.Lister[options.UpdateOneOptions]) error {
-	var updateDoc bson.M
-	switch v := update.(type) {
-	case bson.M:
-		updateDoc = v
-	case map[string]interface{}:
-		updateDoc = bson.M(v)
-	default:
-		_, err := r.collection.UpdateOne(ctx, filter, update, opts...)
-		return err
-	}
-
-	setMap, ok := updateDoc["$set"].(bson.M)
-	if !ok {
-		setMap = bson.M{}
-		updateDoc["$set"] = setMap
-	}
-	setMap["updatedAt"] = time.Now()
-
-	soiMap, ok := updateDoc["$setOnInsert"].(bson.M)
-	if !ok {
-		soiMap = bson.M{}
-		updateDoc["$setOnInsert"] = soiMap
-	}
-	soiMap["createdAt"] = time.Now()
-
-	_, err := r.collection.UpdateOne(ctx, filter, updateDoc, opts...)
-	return err
-}

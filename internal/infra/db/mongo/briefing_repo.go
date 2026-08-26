@@ -14,6 +14,8 @@ type BriefingRepository struct {
 	collection *mongo.Collection
 }
 
+var _ news.BriefingRepository = (*BriefingRepository)(nil)
+
 func NewBriefingRepository(db *mongo.Database) news.BriefingRepository {
 	return &BriefingRepository{
 		collection: db.Collection("daily_briefings"),

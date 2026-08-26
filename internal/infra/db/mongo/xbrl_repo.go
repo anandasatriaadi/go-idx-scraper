@@ -15,6 +15,8 @@ type XBRLRepository struct {
 	collection *mongo.Collection
 }
 
+var _ xbrl.Repository = (*XBRLRepository)(nil)
+
 func NewXBRLRepository(db *mongo.Database) xbrl.Repository {
 	repo := &XBRLRepository{
 		collection: db.Collection("xbrl_statements"),

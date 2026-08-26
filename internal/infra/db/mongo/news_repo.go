@@ -15,6 +15,8 @@ type NewsRepository struct {
 	collection *mongo.Collection
 }
 
+var _ news.Repository = (*NewsRepository)(nil)
+
 // NewNewsRepository creates a new repository instance
 func NewNewsRepository(db *mongo.Database) news.Repository {
 	return &NewsRepository{
@@ -67,9 +69,7 @@ func (r *NewsRepository) UpdateSummary(ctx context.Context, id string, summary *
 	if summary.Priority != 0 {
 		setFields["priority"] = summary.Priority
 	}
-	if summary.ValueScore != 0 {
-		setFields["value_score"] = summary.ValueScore
-	}
+	setFields["value_score"] = summary.ValueScore
 	if summary.ImpactDirection != "" {
 		setFields["impact_direction"] = summary.ImpactDirection
 	}

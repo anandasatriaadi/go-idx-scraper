@@ -14,6 +14,8 @@ type AnnouncementRepository struct {
 	collection *mongo.Collection
 }
 
+var _ announcement.Repository = (*AnnouncementRepository)(nil)
+
 func NewAnnouncementRepository(db *mongo.Database) announcement.Repository {
 	return &AnnouncementRepository{
 		collection: db.Collection("announcements"),
