@@ -79,7 +79,12 @@ export class XBRLStatementRepository {
     const skip = filters.skip || 0
 
     const [statements, total] = await Promise.all([
-      this.collection.find(query).sort({ 'valuation.margin_of_safety_pct': -1 }).skip(skip).limit(limit).toArray(),
+      this.collection
+        .find(query, { projection: { facts: 0 } })
+        .sort({ 'valuation.margin_of_safety_pct': -1 })
+        .skip(skip)
+        .limit(limit)
+        .toArray(),
       this.collection.countDocuments(query)
     ])
 
