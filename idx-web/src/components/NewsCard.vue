@@ -44,9 +44,17 @@
       <!-- Investment Takeaway Pill -->
       <div
         v-if="news.investment_takeaway"
-        class="rounded border border-emerald-500/20 bg-emerald-500/10 p-2 text-[11px] font-medium text-emerald-300 leading-snug line-clamp-2"
+        :class="[
+          'rounded p-2.5 text-[11px] font-medium leading-relaxed border',
+          (news.value_score && news.value_score < 0) || (news.impact_direction && news.impact_direction.toLowerCase() === 'bearish')
+            ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+            : (news.value_score && news.value_score > 0) || (news.impact_direction && news.impact_direction.toLowerCase() === 'bullish')
+            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+            : 'border-sky-500/30 bg-sky-500/10 text-sky-300'
+        ]"
       >
-        💡 {{ news.investment_takeaway }}
+        <span class="mr-1">{{ (news.value_score && news.value_score < 0) || (news.impact_direction && news.impact_direction.toLowerCase() === 'bearish') ? '⚠️' : '💡' }}</span>
+        <span>{{ news.investment_takeaway }}</span>
       </div>
     </CardContent>
 

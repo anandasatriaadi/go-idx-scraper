@@ -50,11 +50,22 @@
       <!-- Scrollable Body -->
       <div class="overflow-y-auto p-6 space-y-5">
         <!-- Value Takeaway Box -->
-        <div v-if="article.investment_takeaway" class="rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-4 space-y-1">
-          <div class="flex items-center gap-1.5 text-xs font-mono font-bold text-emerald-400">
-            💡 VALUE INVESTOR TAKEAWAY
+        <div
+          v-if="article.investment_takeaway"
+          :class="[
+            'rounded-lg border p-4 space-y-1',
+            (article.value_score && article.value_score < 0) || (article.impact_direction && article.impact_direction.toLowerCase() === 'bearish')
+              ? 'border-rose-500/30 bg-rose-950/20 text-rose-300'
+              : 'border-emerald-500/30 bg-emerald-950/20 text-emerald-300'
+          ]"
+        >
+          <div
+            class="flex items-center gap-1.5 text-xs font-mono font-bold"
+            :class="(article.value_score && article.value_score < 0) || (article.impact_direction && article.impact_direction.toLowerCase() === 'bearish') ? 'text-rose-400' : 'text-emerald-400'"
+          >
+            {{ (article.value_score && article.value_score < 0) || (article.impact_direction && article.impact_direction.toLowerCase() === 'bearish') ? '⚠️ RISK HEADWIND TAKEAWAY' : '💡 VALUE INVESTOR TAKEAWAY' }}
           </div>
-          <p class="text-xs sm:text-sm leading-relaxed text-emerald-300">
+          <p class="text-xs sm:text-sm leading-relaxed">
             {{ article.investment_takeaway }}
           </p>
         </div>
