@@ -57,26 +57,24 @@ go-idx-scraper/
 │   ├── scraper/                       # Multi-channel news scraper & 7 AM GMT+8 briefing generator
 │   └── xbrl_parser/                   # Standalone directory XBRL stream parser & ratio engine
 ├── internal/
-│   ├── browser/                       # Selenium WebDriver wrapper & headless Chrome lifecycle
+│   ├── browser/                       # Secondary Adapter: Selenium WebDriver & Chrome lifecycle
 │   ├── config/                        # YAML configuration loader with macOS/Linux auto-detection
-│   ├── feature/                       # Hexagonal DDD Core Business Domains
-│   │   ├── announcement/              # Announcement domain entities & service logic
-│   │   ├── common/                    # Shared domain primitives & types
-│   │   ├── finreport/                 # Financial report domain models
-│   │   ├── news/                      # News article & daily briefing domain models
-│   │   ├── stock/                     # Stock ticker registry domain models
-│   │   ├── system/                    # System maintenance domain models
-│   │   └── xbrl/                      # Statement entity, FactMap, & Forensic Valuation Calculator
+│   ├── feature/                       # Pure DDD Domain Core & Application Use Cases (ZERO infra imports)
+│   │   ├── announcement/              # Announcement domain entities, repository port, & sync use case
+│   │   ├── common/                    # Shared domain primitives & types (Attachment)
+│   │   ├── finreport/                 # Financial report domain models, repository port, & parser use case
+│   │   ├── news/                      # News article & briefing domain models, ports, & summary use case
+│   │   ├── stock/                     # Stock ticker & price candles domain models and repository port
+│   │   ├── system/                    # System maintenance domain model (LastRun) & repository port
+│   │   └── xbrl/                      # Statement entity, FactMap, Forensic Valuation & Timing Calculators, port
 │   ├── helper/                        # Logging (zap), Excel parsing, file utils, email
-│   └── infra/                         # External Adapters (Driven Ports Implementation)
-│       ├── db/mongo/                  # MongoDB v2 driver repositories (price, xbrl, news, etc.)
-│       ├── external/                  # External service adapters
+│   └── infra/                         # External Driven Adapters (Driven Ports Implementation)
+│       ├── db/mongo/                  # MongoDB v2 driver repositories (price, xbrl, news, system, etc.)
 │       ├── idx/                       # IDX disclosure portal HTTP & web adapters
 │       ├── scraper/kontan/            # Kontan financial news scraper
 │       ├── xbrl/                      # Streaming XML/XBRL parser (`xml.NewDecoder`)
 │       └── yahoo/                     # Yahoo Finance API client (`{TICKER}.JK`)
-├── tools/                             # Developer CLI Tools & Code Generators
-│   ├── mongo_repo/                    # Boilerplate code generator for MongoDB repos
+├── tools/                             # Developer CLI Tools
 │   ├── reset_db/                      # Database wipe and re-index utility
 │   └── seed_ticker/                   # Single-ticker 5-year end-to-end historical data seeder
 ├── config/                            # Runtime configuration files (config.yml, config-mac.yml)
@@ -149,20 +147,30 @@ go-idx-scraper/
    )
    ```
 
-5. **Hexagonal Domain Ports & Adapters**
-   Domain entities and repository interfaces live in `internal/feature/<name>/entity.go`. Concrete implementations live in `internal/infra/db/mongo/` or `internal/infra/<adapter>/`.
+5. **Hexagonal Domain Ports & Adapters Purity**
+   - Domain entities and driven repository port interfaces live in `internal/feature/<name>/entity.go`.
+   - Domain layers must have **ZERO external database or driver imports** (no `go.mongodb.org/mongo-driver/v2`).
+   - Driven repository port interfaces must use explicit domain methods (e.g. `FindByTickerAndPeriod`, `GetLastRun`, `UpsertCandles`), never leaky generic signatures like `filter any` or `options.Lister`.
+   - Concrete implementations live in `internal/infra/db/mongo/` or `internal/infra/<adapter>/`.
 
-6. **MongoDB Schema Conventions**
-   - Use `go.mongodb.org/mongo-driver/v2`.
+6. **Application Services Encapsulation**
+   - Orchestration workflows, scraping pipelines, disclosure filtering, and business coordination live in `internal/feature/<name>/service.go`.
+   - CLI entry points in `cmd/*` act purely as driving adapters (composition roots that parse flags, wire dependencies, and call application service methods).
+
+7. **MongoDB Schema Conventions**
+   - Use `go.mongodb.org/mongo-driver/v2` in persistence adapters (`internal/infra/db/mongo/`).
    - Use snake_case for `json` and `bson` struct tags.
+   - Use standard `string` with `bson:"_id,omitempty" json:"id"` for document IDs in domain entities.
    - Use pointer types (e.g. `*string`, `*float64`) for optional fields.
-   - Use `omitempty` on `_id`.
 
-7. **One Concern per File**
+8. **One Concern per File**
    Keep functions focused and cohesive. Separate calculation logic (`calculator.go`) from domain entities (`entity.go`).
 
 ### What to Avoid
 
+- **NO Infrastructure Imports in Domain**: Never import MongoDB driver packages, Selenium, or HTTP libraries into `internal/feature/`.
+- **NO Leaky Repository Ports**: Never pass raw `bson.M`, `filter any`, or `options.Lister` into domain port interfaces.
+- **NO Business Logic in `cmd/*`**: CLI main files are strictly driving adapters and composition roots.
 - **NO HTTP Servers in Go**: All REST APIs live in `idx-web/`.
 - **NO Chi/Gin/Fiber Routers** in Go.
 - **NO Hardcoded Credentials or Paths**: Use `config/config.yml` or CLI flags.
