@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"math"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -314,24 +315,30 @@ func assignDEIMetadata(s *domain.Statement, tag, val string) {
 func assignCoreMetric(stmt *domain.Statement, tag string, val float64) {
 	c := &stmt.Core
 	switch tag {
-	case "Assets":
+	case "Assets", "TotalAssets":
 		c.TotalAssets = val
-	case "CashAndCashEquivalents":
-		c.CashAndEquivalents = val
-	case "CurrentAssets":
+	case "CashAndCashEquivalents", "CashAndBankBalances", "CashAndCashEquivalentsAtEndOfPeriod", "CashAndCashEquivalentsAtEndOfYear":
+		if c.CashAndEquivalents == 0 {
+			c.CashAndEquivalents = val
+		}
+	case "CurrentAssets", "TotalCurrentAssets":
 		c.CurrentAssets = val
-	case "Liabilities":
+	case "Liabilities", "TotalLiabilities":
 		c.TotalLiabilities = val
-	case "CurrentLiabilities":
+	case "CurrentLiabilities", "TotalCurrentLiabilities":
 		c.CurrentLiabilities = val
-	case "ShortTermBankLoans":
-		c.ShortTermDebt = val
-	case "LongTermBankLoans":
-		c.LongTermDebt = val
-	case "Equity", "TotalEquity":
-		c.TotalEquity = val
-	case "RetainedEarningsUnappropriated":
-		c.RetainedEarnings = val
+	case "ShortTermBankLoans", "ShortTermLoans", "ShortTermBorrowings", "CurrentMaturitiesOfLongTermBankLoans", "CurrentMaturitiesOfLongTermLoans", "CurrentMaturitiesOfBondsPayable", "CurrentMaturitiesOfSukuk", "CurrentMaturitiesOfLeaseLiabilities", "CurrentLeaseLiabilities", "ShortTermBondsPayable", "ShortTermSukuk", "ShortTermNotesPayable":
+		c.ShortTermDebt += math.Abs(val)
+	case "LongTermBankLoans", "LongTermLoans", "LongTermBorrowings", "BondsPayable", "LongTermBondsPayable", "Sukuk", "LongTermSukuk", "NonCurrentLeaseLiabilities", "LongTermLeaseLiabilities", "LongTermNotesPayable", "SubordinatedLoans", "SubordinatedBonds":
+		c.LongTermDebt += math.Abs(val)
+	case "Equity", "TotalEquity", "EquityAttributableToOwnersOfParentEntity":
+		if c.TotalEquity == 0 || tag == "Equity" || tag == "TotalEquity" {
+			c.TotalEquity = val
+		}
+	case "RetainedEarningsUnappropriated", "UnappropriatedRetainedEarnings", "RetainedEarnings":
+		if c.RetainedEarnings == 0 {
+			c.RetainedEarnings = val
+		}
 	case "SalesAndRevenue", "Revenues":
 		c.Revenue = val
 	case "InterestIncome", "InterestAndFinanceIncome":
@@ -357,7 +364,7 @@ func assignCoreMetric(stmt *domain.Statement, tag string, val float64) {
 			c.OperatingIncome = val + c.FinanceCosts
 		}
 	case "FinanceCosts", "InterestAndFinanceCosts":
-		c.FinanceCosts = val
+		c.FinanceCosts = math.Abs(val)
 	case "ProfitLoss":
 		c.NetIncome = val
 	case "ProfitLossAttributableToOwnersOfParentEntity", "ProfitLossAttributableToParentEntity":
@@ -370,10 +377,10 @@ func assignCoreMetric(stmt *domain.Statement, tag string, val float64) {
 		c.InvestingCashFlow = val
 	case "NetCashFlowsReceivedFromUsedInFinancingActivities", "NetCashFlowsFromUsedInFinancingActivities":
 		c.FinancingCashFlow = val
-	case "PaymentsForPropertyPlantEquipment", "PaymentsForAcquisitionOfPropertyPlantAndEquipment", "AdditionInPropertyPlantAndEquipment":
-		c.CapEx = val
-	case "DistributionsOfCashDividends", "DividendsPaidFromFinancingActivities":
-		c.DividendsPaid = val
+	case "PaymentsForPropertyPlantEquipment", "PaymentsForAcquisitionOfPropertyPlantAndEquipment", "PaymentsForAcquisitionOfPropertyAndEquipment", "PurchaseOfPropertyPlantAndEquipment", "AdditionInPropertyPlantAndEquipment", "PaymentsForAcquisitionOfFixedAssets", "PaymentsForAcquisitionOfOilAndGasProperties", "PaymentsForAcquisitionOfMiningProperties", "PaymentsForAcquisitionOfBearerPlants", "PaymentsForAcquisitionOfBiologicalAssets", "PaymentsForExplorationAndEvaluationAssets":
+		c.CapEx += math.Abs(val)
+	case "DistributionsOfCashDividends", "DividendsPaidFromFinancingActivities", "PaymentsOfCashDividends", "PaymentOfDividends", "DividendsPaid", "DividendsPaidToOwnersOfParentEntity":
+		c.DividendsPaid += math.Abs(val)
 	case "WeightedAverageShares", "NumberOfIssuedAndFullyPaidShares":
 		c.SharesOutstanding = val
 	case "BasicEarningsLossPerShareFromContinuingOperations", "BasicEarningsLossPerShare", "DilutedEarningsLossPerShareFromContinuingOperations", "DilutedEarningsLossPerShare":
@@ -390,6 +397,15 @@ func assignCoreMetric(stmt *domain.Statement, tag string, val float64) {
 
 func finalizeCoreFinancials(s *domain.Statement) {
 	c := &s.Core
+
+	// Net income parent fallback
+	if c.NetIncomeParent == 0 && c.NetIncome != 0 {
+		c.NetIncomeParent = c.NetIncome
+	}
+	if c.NetIncome == 0 && c.NetIncomeParent != 0 {
+		c.NetIncome = c.NetIncomeParent
+	}
+
 	if c.TotalDebt == 0 {
 		c.TotalDebt = c.ShortTermDebt + c.LongTermDebt
 	}

@@ -2,6 +2,7 @@ package xbrl
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -280,26 +281,30 @@ func parseExcelIncomeStatement(f *excelize.File, stmt *domain.Statement) {
 		val := findFirstNumericCell(row)
 
 		switch {
-		case strings.Contains(label, "penjualan dan pendapatan") || strings.Contains(label, "sales and revenue") || strings.Contains(label, "pendapatan bunga") || strings.Contains(label, "interest income") || strings.Contains(label, "pendapatan operasional"):
+		case strings.Contains(label, "penjualan dan pendapatan") || strings.Contains(label, "sales and revenue") || strings.Contains(label, "pendapatan usaha"):
+			stmt.Core.Revenue = val * stmt.Metadata.RoundingMultiplier
+		case strings.Contains(label, "pendapatan bunga") || strings.Contains(label, "interest income") || strings.Contains(label, "pendapatan operasional"):
 			if stmt.Core.Revenue == 0 {
 				stmt.Core.Revenue = val * stmt.Metadata.RoundingMultiplier
 			}
-		case strings.Contains(label, "beban pokok penjualan") || strings.Contains(label, "cost of sales and revenue") || strings.Contains(label, "beban bunga") || strings.Contains(label, "interest expense"):
+		case strings.Contains(label, "beban pokok penjualan") || strings.Contains(label, "cost of sales and revenue") || strings.Contains(label, "beban pokok pendapatan"):
+			stmt.Core.CostOfRevenue = math.Abs(val) * stmt.Metadata.RoundingMultiplier
+		case strings.Contains(label, "beban bunga") || strings.Contains(label, "interest expense"):
 			if stmt.Core.CostOfRevenue == 0 {
-				stmt.Core.CostOfRevenue = val * stmt.Metadata.RoundingMultiplier
+				stmt.Core.CostOfRevenue = math.Abs(val) * stmt.Metadata.RoundingMultiplier
 			}
-		case strings.Contains(label, "jumlah laba bruto") || strings.Contains(label, "gross profit") || strings.Contains(label, "pendapatan bunga bersih") || strings.Contains(label, "net interest income"):
+		case strings.Contains(label, "jumlah laba bruto") || strings.Contains(label, "gross profit"):
+			stmt.Core.GrossProfit = val * stmt.Metadata.RoundingMultiplier
+		case strings.Contains(label, "pendapatan bunga bersih") || strings.Contains(label, "net interest income"):
 			if stmt.Core.GrossProfit == 0 {
 				stmt.Core.GrossProfit = val * stmt.Metadata.RoundingMultiplier
 			}
-		case strings.Contains(label, "laba (rugi) usaha") || strings.Contains(label, "operating profit") || strings.Contains(label, "operating income") || strings.Contains(label, "laba operasional"):
+		case strings.Contains(label, "laba (rugi) usaha") || strings.Contains(label, "operating profit") || strings.Contains(label, "operating income") || strings.Contains(label, "laba operasional") || strings.Contains(label, "laba usaha"):
 			if stmt.Core.OperatingIncome == 0 {
 				stmt.Core.OperatingIncome = val * stmt.Metadata.RoundingMultiplier
 			}
-		case strings.Contains(label, "beban keuangan") || strings.Contains(label, "finance costs"):
-			if stmt.Core.FinanceCosts == 0 {
-				stmt.Core.FinanceCosts = val * stmt.Metadata.RoundingMultiplier
-			}
+		case strings.Contains(label, "beban keuangan") || strings.Contains(label, "finance costs") || strings.Contains(label, "biaya keuangan"):
+			stmt.Core.FinanceCosts = math.Abs(val) * stmt.Metadata.RoundingMultiplier
 		case strings.Contains(label, "laba (rugi) yang dapat diatribusikan ke entitas induk") || strings.Contains(label, "profit (loss) attributable to parent entity"):
 			if stmt.Core.NetIncomeParent == 0 {
 				stmt.Core.NetIncomeParent = val * stmt.Metadata.RoundingMultiplier
@@ -359,13 +364,13 @@ func parseExcelCashFlow(f *excelize.File, stmt *domain.Statement) {
 					stmt.Core.FinancingCashFlow = val * stmt.Metadata.RoundingMultiplier
 				}
 			}
-		case strings.Contains(label, "perolehan aset tetap") || strings.Contains(label, "payments for property, plant and equipment") || strings.Contains(label, "penambahan aset tetap") || strings.Contains(label, "pembelian aset tetap"):
+		case strings.Contains(label, "perolehan aset tetap") || strings.Contains(label, "payments for property, plant and equipment") || strings.Contains(label, "penambahan aset tetap") || strings.Contains(label, "pembelian aset tetap") || strings.Contains(label, "perolehan properti"):
 			if stmt.Core.CapEx == 0 {
-				stmt.Core.CapEx = val * stmt.Metadata.RoundingMultiplier
+				stmt.Core.CapEx = math.Abs(val) * stmt.Metadata.RoundingMultiplier
 			}
-		case strings.Contains(label, "pembayaran dividen") || strings.Contains(label, "dividends paid"):
+		case strings.Contains(label, "pembayaran dividen") || strings.Contains(label, "dividends paid") || strings.Contains(label, "dividen kas"):
 			if stmt.Core.DividendsPaid == 0 {
-				stmt.Core.DividendsPaid = val * stmt.Metadata.RoundingMultiplier
+				stmt.Core.DividendsPaid = math.Abs(val) * stmt.Metadata.RoundingMultiplier
 			}
 		}
 	}
