@@ -3,21 +3,18 @@ package system
 import (
 	"context"
 	"time"
-
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 type LastRun struct {
-	CreatedAt  time.Time     `bson:"createdAt" json:"createdAt"`
-	UpdatedAt  time.Time     `bson:"updatedAt" json:"updatedAt"`
-	LastRunAt  time.Time     `bson:"lastRunAt" json:"lastRunAt"`
-	Metadata   bson.M        `bson:"metadata,omitempty" json:"metadata,omitempty"`
-	ScriptName string        `bson:"scriptName" json:"scriptName"`
-	ID         bson.ObjectID `bson:"_id,omitempty" json:"id"`
+	ID         string         `bson:"_id,omitempty" json:"id,omitempty"`
+	ScriptName string         `bson:"scriptName" json:"scriptName"`
+	LastRunAt  time.Time      `bson:"lastRunAt" json:"lastRunAt"`
+	Metadata   map[string]any `bson:"metadata,omitempty" json:"metadata,omitempty"`
+	CreatedAt  time.Time      `bson:"createdAt" json:"createdAt"`
+	UpdatedAt  time.Time      `bson:"updatedAt" json:"updatedAt"`
 }
 
 type Repository interface {
-	FindOne(ctx context.Context, filter any, opts ...options.Lister[options.FindOneOptions]) (*LastRun, error)
-	UpdateOne(ctx context.Context, filter any, update any, opts ...options.Lister[options.UpdateOneOptions]) error
+	GetLastRun(ctx context.Context, scriptName string) (*LastRun, error)
+	SaveLastRun(ctx context.Context, lastRun *LastRun) error
 }

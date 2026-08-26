@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.uber.org/zap"
 )
 
@@ -30,16 +28,54 @@ func (s *Service) Create(ctx context.Context, f *FinancialReport) error {
 	return s.repo.Create(ctx, f)
 }
 
-func (s *Service) FindAll(ctx context.Context, filter bson.M, opts ...options.Lister[options.FindOptions]) ([]*FinancialReport, error) {
-	return s.repo.FindAll(ctx, filter, opts...)
+func (s *Service) FindByIssuerYearPeriod(ctx context.Context, issuerCode string, year int, periodString string) (*FinancialReport, error) {
+	return s.repo.FindByIssuerAndPeriod(ctx, issuerCode, year, periodString)
 }
 
-func (s *Service) FindOne(ctx context.Context, filter any) (*FinancialReport, error) {
-	return s.repo.FindOne(ctx, filter)
+func (s *Service) UpdateIsLatest(ctx context.Context, issuerCode string, year int, periodString string, isLatest bool) error {
+	return s.repo.UpdateIsLatest(ctx, issuerCode, year, periodString, isLatest)
 }
 
-func (s *Service) UpdateOne(ctx context.Context, filter, update any) error {
-	return s.repo.UpdateOne(ctx, filter, update)
+func (s *Service) ListByIssuer(ctx context.Context, issuerCode string, limit int) ([]*FinancialReport, error) {
+	return s.repo.ListByIssuer(ctx, issuerCode, limit)
+}
+
+func (s *Service) MarkAsNeedsDownload(ctx context.Context, id, announcementID string) error {
+	return s.repo.MarkNeedsDownload(ctx, id, announcementID)
+}
+
+func (s *Service) MarkAsDownloaded(ctx context.Context, id string, reportURL string) error {
+	return s.repo.MarkDownloaded(ctx, id, reportURL)
+}
+
+func (s *Service) FindAllNotLatest(ctx context.Context) ([]*FinancialReport, error) {
+	return s.repo.FindAllNotLatest(ctx)
+}
+
+func (s *Service) GetReportsForEmail(ctx context.Context, issuerCode string) (newReports, updatedReports []*FinancialReport, err error) {
+	reports, err := s.repo.ListByIssuer(ctx, issuerCode, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for _, r := range reports {
+		if r.IsLatest {
+			if r.AnnouncementID == "" {
+				newReports = append(newReports, r)
+			} else {
+				updatedReports = append(updatedReports, r)
+			}
+		}
+	}
+
+	sort.Slice(newReports, func(i, j int) bool {
+		return newReports[i].IssuerCode < newReports[j].IssuerCode
+	})
+	sort.Slice(updatedReports, func(i, j int) bool {
+		return updatedReports[i].IssuerCode < updatedReports[j].IssuerCode
+	})
+
+	return newReports, updatedReports, nil
 }
 
 var filenameRegex = regexp.MustCompile(`^FinancialStatement-(\d{4})-(I{1,3}|IV|Tahunan)-([A-Z]+)\.xlsx$`)
@@ -153,72 +189,4 @@ func romanToNumeral(roman string) string {
 	default:
 		return roman
 	}
-}
-
-func (s *Service) FindByIssuerYearPeriod(ctx context.Context, issuerCode string, year int, periodString string) (*FinancialReport, error) {
-	filter := bson.M{
-		"issuer_code":   issuerCode,
-		"year":          year,
-		"period_string": periodString,
-	}
-	return s.repo.FindOne(ctx, filter)
-}
-
-func (s *Service) MarkAsNeedsDownload(ctx context.Context, id, announcementID string) error {
-	update := bson.M{
-		"$set": bson.M{
-			"is_latest":       false,
-			"announcement_id": announcementID,
-			"updated_at":      time.Now(),
-		},
-	}
-	return s.repo.UpdateOne(ctx, bson.M{"_id": id}, update)
-}
-
-func (s *Service) MarkAsDownloaded(ctx context.Context, id bson.ObjectID, reportURL string) error {
-	update := bson.M{
-		"$set": bson.M{
-			"is_latest":     true,
-			"report_url":    reportURL,
-			"downloaded_at": time.Now().Unix(),
-			"updated_at":    time.Now(),
-		},
-	}
-	return s.repo.UpdateOne(ctx, bson.M{"_id": id}, update)
-}
-
-func (s *Service) FindAllNotLatest(ctx context.Context) ([]*FinancialReport, error) {
-	filter := bson.M{"is_latest": false}
-	opts := options.Find().SetSort(bson.D{{Key: "downloaded_at", Value: 1}})
-	return s.repo.FindAll(ctx, filter, opts)
-}
-
-type DownloadedReport struct {
-	Report    *FinancialReport
-	IsUpdated bool
-}
-
-func (s *Service) GetReportsForEmail(ctx context.Context) (newReports, updatedReports []*FinancialReport, err error) {
-	filter := bson.M{"is_latest": true}
-	reports, err := s.repo.FindAll(ctx, filter)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	for _, r := range reports {
-		if r.AnnouncementID == "" {
-			newReports = append(newReports, r)
-		} else {
-			updatedReports = append(updatedReports, r)
-		}
-	}
-
-	sort.Slice(newReports, func(i, j int) bool {
-		return newReports[i].IssuerCode < newReports[j].IssuerCode
-	})
-	sort.Slice(updatedReports, func(i, j int) bool {
-		return updatedReports[i].IssuerCode < updatedReports[j].IssuerCode
-	})
-
-	return newReports, updatedReports, nil
 }

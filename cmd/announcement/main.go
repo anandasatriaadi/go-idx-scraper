@@ -16,11 +16,11 @@ import (
 	br "github.com/anandasatriaadi/go-idx-scraper/internal/browser"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/announcement"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/system"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/db/mongo"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/idx"
 	"go.mongodb.org/mongo-driver/v2/bson"
-	mongoDriver "go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.uber.org/zap"
 )
@@ -92,22 +92,27 @@ func run() error {
 	// Initialize the IDXProvider adapter (External Service)
 	idxProvider := idx.NewIDXProvider(logger, browser.Driver)
 
-	lr, err := lRepo.FindOne(ctx, bson.M{"scriptName": "idx-announcement"})
+	lr, err := lRepo.GetLastRun(ctx, "idx-announcement")
 	var dateFrom string
 	var latestDate *time.Time
 	if err != nil {
-		if err == mongoDriver.ErrNoDocuments {
-			dateFrom = time.Unix(0, 0).Format("20060102")
-		} else {
-			logger.Error("Failed to find last run", zap.Error(err))
-			return err
-		}
+		logger.Error("Failed to find last run", zap.Error(err))
+		return err
+	}
+	if lr == nil {
+		dateFrom = time.Unix(0, 0).Format("20060102")
 	} else {
 		dateFrom = lr.LastRunAt.Format("20060102")
-		if ldate, ok := lr.Metadata["latest_date"].(bson.DateTime); ok {
-			tempDate := ldate.Time().Add(-8 * time.Hour)
-			latestDate = &tempDate
-			logger.Info("Loaded latestDate from last run", zap.Time("latestDate", *latestDate))
+		if lr.Metadata != nil {
+			if ldate, ok := lr.Metadata["latest_date"].(time.Time); ok {
+				tempDate := ldate.Add(-8 * time.Hour)
+				latestDate = &tempDate
+				logger.Info("Loaded latestDate from last run", zap.Time("latestDate", *latestDate))
+			} else if ldateBson, ok := lr.Metadata["latest_date"].(bson.DateTime); ok {
+				tempDate := ldateBson.Time().Add(-8 * time.Hour)
+				latestDate = &tempDate
+				logger.Info("Loaded latestDate from last run", zap.Time("latestDate", *latestDate))
+			}
 		}
 	}
 
@@ -166,14 +171,12 @@ func run() error {
 			latestDate = latestAnnDocs[0].CreatedDate
 		}
 
-		filter := bson.M{"scriptName": "idx-announcement"}
-		update := bson.M{"$set": bson.M{
-			"scriptName": "idx-announcement",
-			"lastRunAt":  time.Now(),
-			"metadata":   bson.M{"latest_date": latestDate},
-		}}
-		opts := options.UpdateOne().SetUpsert(true)
-		if err := lRepo.UpdateOne(ctx, filter, update, opts); err != nil {
+		lastRun := &system.LastRun{
+			ScriptName: "idx-announcement",
+			LastRunAt:  time.Now(),
+			Metadata:   map[string]any{"latest_date": latestDate},
+		}
+		if err := lRepo.SaveLastRun(ctx, lastRun); err != nil {
 			logger.Error("Failed to save last run", zap.Error(err))
 			return err
 		}

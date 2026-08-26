@@ -7,7 +7,6 @@ import (
 
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/common"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/finreport"
-	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.uber.org/zap"
 )
@@ -93,11 +92,7 @@ func (s *Service) ProcessFinancialReportAnnouncement(ctx context.Context, a *Ann
 		return nil
 	}
 
-	existing, err := s.finreport.FindOne(ctx, bson.M{
-		"issuer_code":   issuerCode,
-		"year":          year,
-		"period_string": periodString,
-	})
+	existing, err := s.finreport.FindByIssuerAndPeriod(ctx, issuerCode, year, periodString)
 	if err != nil {
 		return err
 	}
@@ -111,6 +106,8 @@ func (s *Service) ProcessFinancialReportAnnouncement(ctx context.Context, a *Ann
 			AnnouncementID: a.ID,
 			DownloadedAt:   time.UnixMilli(int64(0)),
 			IsLatest:       false,
+			CreatedAt:      now,
+			UpdatedAt:      now,
 		}
 		return s.finreport.Create(ctx, report)
 	}
@@ -125,12 +122,5 @@ func (s *Service) ProcessFinancialReportAnnouncement(ctx context.Context, a *Ann
 		}
 	}
 
-	return s.finreport.UpdateOne(ctx,
-		bson.M{"_id": existing.ID},
-		bson.M{"$set": bson.M{
-			"is_latest":       false,
-			"announcement_id": a.ID,
-			"updated_at":      now,
-		}},
-	)
+	return s.finreport.MarkNeedsDownload(ctx, existing.ID, a.ID)
 }

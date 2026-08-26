@@ -55,7 +55,7 @@ func TestPriceCandle_StructAndMockRepo(t *testing.T) {
 	now := time.Now().UTC()
 	candles := []stock.PriceCandle{
 		{
-			ID:        bson.NewObjectID(),
+			ID:        bson.NewObjectID().Hex(),
 			Ticker:    "BBRI",
 			Date:      now,
 			Open:      3100,

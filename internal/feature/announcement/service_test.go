@@ -32,13 +32,22 @@ type MockFinreportRepository struct{}
 func (m *MockFinreportRepository) Create(ctx context.Context, r *finreport.FinancialReport) error {
 	return nil
 }
-func (m *MockFinreportRepository) FindAll(ctx context.Context, filter any, opts ...options.Lister[options.FindOptions]) ([]*finreport.FinancialReport, error) {
+func (m *MockFinreportRepository) FindByIssuerAndPeriod(ctx context.Context, issuerCode string, year int, periodString string) (*finreport.FinancialReport, error) {
 	return nil, nil
 }
-func (m *MockFinreportRepository) FindOne(ctx context.Context, filter any) (*finreport.FinancialReport, error) {
+func (m *MockFinreportRepository) UpdateIsLatest(ctx context.Context, issuerCode string, year int, periodString string, isLatest bool) error {
+	return nil
+}
+func (m *MockFinreportRepository) ListByIssuer(ctx context.Context, issuerCode string, limit int) ([]*finreport.FinancialReport, error) {
 	return nil, nil
 }
-func (m *MockFinreportRepository) UpdateOne(ctx context.Context, filter, update any) error {
+func (m *MockFinreportRepository) FindAllNotLatest(ctx context.Context) ([]*finreport.FinancialReport, error) {
+	return nil, nil
+}
+func (m *MockFinreportRepository) MarkDownloaded(ctx context.Context, id string, reportURL string) error {
+	return nil
+}
+func (m *MockFinreportRepository) MarkNeedsDownload(ctx context.Context, id string, announcementID string) error {
 	return nil
 }
 
