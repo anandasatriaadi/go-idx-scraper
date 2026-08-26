@@ -98,16 +98,13 @@ func (r *XBRLRepository) FindHistoricalByTicker(ctx context.Context, ticker stri
 	return results, nil
 }
 
-func (r *XBRLRepository) FindAllWithFilter(ctx context.Context, filter any, opts ...options.Lister[options.FindOptions]) ([]*xbrl.Statement, error) {
-	cursor, err := r.collection.Find(ctx, filter, opts...)
+func (r *XBRLRepository) FindLatestByTicker(ctx context.Context, ticker string) (*xbrl.Statement, error) {
+	filter := bson.M{"ticker": ticker}
+	opts := options.FindOne().SetSort(bson.D{{Key: "year", Value: -1}, {Key: "period_end_date", Value: -1}})
+	var stmt xbrl.Statement
+	err := r.collection.FindOne(ctx, filter, opts).Decode(&stmt)
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
-
-	var results []*xbrl.Statement
-	if err := cursor.All(ctx, &results); err != nil {
-		return nil, err
-	}
-	return results, nil
+	return &stmt, nil
 }

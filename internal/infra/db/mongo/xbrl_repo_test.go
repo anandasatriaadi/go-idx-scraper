@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/xbrl"
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 type MockXBRLRepo struct {
@@ -29,8 +27,8 @@ func (m *MockXBRLRepo) FindHistoricalByTicker(ctx context.Context, ticker string
 	return m.List, m.Err
 }
 
-func (m *MockXBRLRepo) FindAllWithFilter(ctx context.Context, filter any, opts ...options.Lister[options.FindOptions]) ([]*xbrl.Statement, error) {
-	return m.List, m.Err
+func (m *MockXBRLRepo) FindLatestByTicker(ctx context.Context, ticker string) (*xbrl.Statement, error) {
+	return m.Statement, m.Err
 }
 
 func TestXBRLRepository_InterfaceCompliance(t *testing.T) {
@@ -41,7 +39,7 @@ func TestXBRLRepository_InterfaceCompliance(t *testing.T) {
 func TestXBRLStatement_MockRepo(t *testing.T) {
 	mock := &MockXBRLRepo{}
 	stmt := &xbrl.Statement{
-		ID:            bson.NewObjectID(),
+		ID:            "66c89123456789abcdef0123",
 		Ticker:        "BBRI",
 		Year:          2025,
 		Period:        "Q3",

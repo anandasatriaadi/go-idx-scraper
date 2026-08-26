@@ -3,12 +3,10 @@ package xbrl
 import (
 	"testing"
 	"time"
-
-	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 func TestStatementEntity_Fields(t *testing.T) {
-	id := bson.NewObjectID()
+	id := "66c89123456789abcdef0123"
 	now := time.Now()
 
 	s := &Statement{

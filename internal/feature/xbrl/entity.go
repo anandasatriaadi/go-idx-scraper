@@ -3,9 +3,6 @@ package xbrl
 import (
 	"context"
 	"time"
-
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 type FactValue struct {
@@ -144,7 +141,7 @@ type TimingSignal struct {
 }
 
 type Statement struct {
-	ID             bson.ObjectID     `bson:"_id,omitempty" json:"id"`
+	ID             string            `bson:"_id,omitempty" json:"id"`
 	Ticker         string            `bson:"ticker" json:"ticker"`
 	CompanyName    string            `bson:"company_name" json:"company_name"`
 	Year           int               `bson:"year" json:"year"`
@@ -167,5 +164,5 @@ type Repository interface {
 	Upsert(ctx context.Context, s *Statement) error
 	FindByTickerAndPeriod(ctx context.Context, ticker string, year int, period string) (*Statement, error)
 	FindHistoricalByTicker(ctx context.Context, ticker string, limit int) ([]*Statement, error)
-	FindAllWithFilter(ctx context.Context, filter any, opts ...options.Lister[options.FindOptions]) ([]*Statement, error)
+	FindLatestByTicker(ctx context.Context, ticker string) (*Statement, error)
 }
