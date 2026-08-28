@@ -10,6 +10,7 @@ import (
 	"time"
 
 	domain "github.com/anandasatriaadi/go-idx-scraper/internal/feature/xbrl"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/xbrl/parser"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -66,7 +67,7 @@ func ParseExcelStatement(filePath string) (*domain.Statement, error) {
 	// Parse Cash Flow / Sheet 1510000 / CashFlow
 	parseExcelCashFlow(f, stmt)
 
-	finalizeCoreFinancials(stmt)
+	parser.FinalizeCoreFinancials(stmt)
 
 	return stmt, nil
 }
@@ -161,10 +162,10 @@ func parseExcelGeneralInfo(f *excelize.File, stmt *domain.Statement) {
 				stmt.Metadata.RoundingMultiplier = 1000000000
 			}
 		case strings.Contains(key, "kurs konversi") || strings.Contains(key, "conversion rate"):
-			rate, _ := parseNumericValue(val)
+			rate, _ := parser.ParseNumericValue(val)
 			stmt.Metadata.ConversionRate = rate
 		case strings.Contains(key, "jumlah saham") || strings.Contains(key, "number of shares") || strings.Contains(key, "outstanding shares") || strings.Contains(key, "disetor penuh") || strings.Contains(key, "modal saham"):
-			if shares, err := parseNumericValue(val); err == nil && shares > 0 {
+			if shares, err := parser.ParseNumericValue(val); err == nil && shares > 0 {
 				if stmt.Core.SharesOutstanding <= 1 {
 					stmt.Core.SharesOutstanding = shares
 				}
