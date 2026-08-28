@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	domain "github.com/anandasatriaadi/go-idx-scraper/internal/feature/xbrl"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/xbrl/calc"
 )
 
 func TestParseInstanceXML_Mock(t *testing.T) {
@@ -79,10 +80,10 @@ func TestParseInstanceXML_DSSA(t *testing.T) {
 		if i > 0 {
 			prior = stmts[i-1]
 		}
-		_ = domain.ComputeValuationAndRatios(s, prior, 1065.0)
+		_ = calc.ComputeValuationAndRatios(s, prior, 1065.0)
 	}
 
-	domain.ApplyStockSplitAdjustment(stmts)
+	calc.ApplyStockSplitAdjustment(stmts)
 
 	for _, s := range stmts {
 		t.Logf("Period: %d %s (Date: %s) -> OpIncome: %.0f, NetIncome: %.0f, ROIC: %.2f%%, ROE: %.2f%%, EPS: %.2f, BVPS: %.2f, Graham: %.2f, MOS: %.2f%%",
@@ -119,10 +120,10 @@ func TestParseInstanceXML_PGAS(t *testing.T) {
 		if i > 0 {
 			prior = stmts[i-1]
 		}
-		_ = domain.ComputeValuationAndRatios(s, prior, 1500.0) // ~1500 IDR market price for PGAS
+		_ = calc.ComputeValuationAndRatios(s, prior, 1500.0) // ~1500 IDR market price for PGAS
 	}
 
-	domain.ApplyStockSplitAdjustment(stmts)
+	calc.ApplyStockSplitAdjustment(stmts)
 
 	for _, s := range stmts {
 		t.Logf("=== PGAS %d %s (Date: %s) === Shares: %.0f, EPS: %.2f, BVPS: %.2f, Graham: %.2f, ROIC: %.2f%%, ROE: %.2f%%, PE: %.2fx, MOS: %.2f%%",
@@ -158,7 +159,7 @@ func TestParseInstanceXML_BBRI(t *testing.T) {
 		if i > 0 {
 			prior = stmts[i-1]
 		}
-		_ = domain.ComputeValuationAndRatios(s, prior, 4800.0) // ~4800 IDR market price for BBRI
+		_ = calc.ComputeValuationAndRatios(s, prior, 4800.0) // ~4800 IDR market price for BBRI
 	}
 
 	for _, s := range stmts {

@@ -1,78 +1,17 @@
-package xbrl
+package calc
 
 import (
 	"math"
 	"sort"
 
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/stock"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/xbrl"
 )
-
-// ComputeValuationBands calculates historical P/E and P/B rolling series over price candles
-// and computes mean, standard deviation, and +/- 1SD, 2SD bands in multiples and IDR prices.
-func ComputeValuationBands(candles []stock.PriceCandle, eps float64, bvps float64) ValuationBands {
-	var bands ValuationBands
-	if len(candles) == 0 {
-		return bands
-	}
-
-	var peSeries []float64
-	var pbSeries []float64
-
-	for _, c := range candles {
-		if c.Close <= 0 {
-			continue
-		}
-		if eps > 0 {
-			peSeries = append(peSeries, c.Close/eps)
-		}
-		if bvps > 0 {
-			pbSeries = append(pbSeries, c.Close/bvps)
-		}
-	}
-
-	if len(peSeries) > 0 {
-		meanPE, stdDevPE := calcMeanAndStdDev(peSeries)
-		bands.MeanPE = meanPE
-		bands.StdDevPE = stdDevPE
-		bands.Plus2SD_PE = meanPE + 2.0*stdDevPE
-		bands.Plus1SD_PE = meanPE + 1.0*stdDevPE
-		bands.Minus1SD_PE = meanPE - 1.0*stdDevPE
-		bands.Minus2SD_PE = meanPE - 2.0*stdDevPE
-
-		if eps > 0 {
-			bands.MeanPrice_PE = meanPE * eps
-			bands.Plus2SDPrice_PE = bands.Plus2SD_PE * eps
-			bands.Plus1SDPrice_PE = bands.Plus1SD_PE * eps
-			bands.Minus1SDPrice_PE = bands.Minus1SD_PE * eps
-			bands.Minus2SDPrice_PE = bands.Minus2SD_PE * eps
-		}
-	}
-
-	if len(pbSeries) > 0 {
-		meanPB, stdDevPB := calcMeanAndStdDev(pbSeries)
-		bands.MeanPB = meanPB
-		bands.StdDevPB = stdDevPB
-		bands.Plus2SD_PB = meanPB + 2.0*stdDevPB
-		bands.Plus1SD_PB = meanPB + 1.0*stdDevPB
-		bands.Minus1SD_PB = meanPB - 1.0*stdDevPB
-		bands.Minus2SD_PB = meanPB - 2.0*stdDevPB
-
-		if bvps > 0 {
-			bands.MeanPrice_PB = meanPB * bvps
-			bands.Plus2SDPrice_PB = bands.Plus2SD_PB * bvps
-			bands.Plus1SDPrice_PB = bands.Plus1SD_PB * bvps
-			bands.Minus1SDPrice_PB = bands.Minus1SD_PB * bvps
-			bands.Minus2SDPrice_PB = bands.Minus2SD_PB * bvps
-		}
-	}
-
-	return bands
-}
 
 // ComputeTimingSignals computes RSI(14), RSI Bullish Divergence, Volume Spread Analysis (RVOL20, CLV, Stopping Volume, VDU5),
 // and synthesizes the Smart Timing Score (0-100) with status classification.
-func ComputeTimingSignals(candles []stock.PriceCandle, bands ValuationBands, eps float64, bvps float64) TimingSignal {
-	var signal TimingSignal
+func ComputeTimingSignals(candles []stock.PriceCandle, bands xbrl.ValuationBands, eps float64, bvps float64) xbrl.TimingSignal {
+	var signal xbrl.TimingSignal
 	n := len(candles)
 	if n == 0 {
 		return signal
@@ -89,7 +28,7 @@ func ComputeTimingSignals(candles []stock.PriceCandle, bands ValuationBands, eps
 	currentPrice := latest.Close
 
 	// 1. RSI(14) calculation
-	rsiSeries := computeRSISeries(sorted, 14)
+	rsiSeries := ComputeRSISeries(sorted, 14)
 	currentRSI := 50.0
 	if len(rsiSeries) > 0 {
 		currentRSI = rsiSeries[len(rsiSeries)-1]
@@ -97,7 +36,7 @@ func ComputeTimingSignals(candles []stock.PriceCandle, bands ValuationBands, eps
 	signal.RSI = math.Round(currentRSI*100) / 100
 
 	// 2. RSI Bullish Divergence Detection
-	bullishDivergence := detectRSIBullishDivergence(sorted, rsiSeries)
+	bullishDivergence := DetectRSIBullishDivergence(sorted, rsiSeries)
 	signal.RSIBullishDivergence = bullishDivergence
 
 	// 3. Volume Spread Analysis (VSA)
@@ -256,36 +195,8 @@ func ComputeTimingSignals(candles []stock.PriceCandle, bands ValuationBands, eps
 	return signal
 }
 
-// calcMeanAndStdDev calculates sample mean and sample standard deviation (N-1)
-func calcMeanAndStdDev(series []float64) (float64, float64) {
-	n := len(series)
-	if n == 0 {
-		return 0, 0
-	}
-	if n == 1 {
-		return series[0], 0
-	}
-
-	var sum float64
-	for _, v := range series {
-		sum += v
-	}
-	mean := sum / float64(n)
-
-	var varianceSum float64
-	for _, v := range series {
-		diff := v - mean
-		varianceSum += diff * diff
-	}
-
-	variance := varianceSum / float64(n-1)
-	stdDev := math.Sqrt(variance)
-
-	return mean, stdDev
-}
-
-// computeRSISeries computes Wilder's RSI series for given candle series
-func computeRSISeries(candles []stock.PriceCandle, period int) []float64 {
+// ComputeRSISeries computes Wilder's RSI series for given candle series.
+func ComputeRSISeries(candles []stock.PriceCandle, period int) []float64 {
 	n := len(candles)
 	if n <= 1 {
 		return nil
@@ -374,9 +285,9 @@ func computeRSISeries(candles []stock.PriceCandle, period int) []float64 {
 	return rsiSeries
 }
 
-// detectRSIBullishDivergence identifies if price makes a lower low over the last 20-40 days
+// DetectRSIBullishDivergence identifies if price makes a lower low over the last 20-40 days
 // while RSI makes a higher low from an oversold level (< 35).
-func detectRSIBullishDivergence(candles []stock.PriceCandle, rsiSeries []float64) bool {
+func DetectRSIBullishDivergence(candles []stock.PriceCandle, rsiSeries []float64) bool {
 	n := len(candles)
 	rsiLen := len(rsiSeries)
 	if n < 20 || rsiLen == 0 {

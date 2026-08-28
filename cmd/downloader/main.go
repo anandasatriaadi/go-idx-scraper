@@ -18,6 +18,7 @@ import (
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/finreport"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/xbrl"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/xbrl/calc"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/db/mongo"
 	infra "github.com/anandasatriaadi/go-idx-scraper/internal/infra/xbrl"
@@ -586,7 +587,7 @@ func parseAndUpsertXBRL(ctx context.Context, filePath string, repo xbrl.Reposito
 		return
 	}
 
-	if err := xbrl.ComputeValuationAndRatios(stmt, nil, 0); err != nil {
+	if err := calc.ComputeValuationAndRatios(stmt, nil, 0); err != nil {
 		logger.Warn("Valuation calculation failed", zap.String("ticker", stmt.Ticker), zap.Error(err))
 	}
 

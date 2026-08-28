@@ -23,6 +23,7 @@ import (
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/finreport"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/stock"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/xbrl"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/xbrl/calc"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/db/mongo"
 	infra "github.com/anandasatriaadi/go-idx-scraper/internal/infra/xbrl"
@@ -367,18 +368,18 @@ func run() error {
 			stmt.Metadata.ConversionRate = usdidr
 		}
 
-		if err := xbrl.ComputeValuationAndRatios(stmt, priorStmt, latestPrice); err != nil {
+		if err := calc.ComputeValuationAndRatios(stmt, priorStmt, latestPrice); err != nil {
 			logger.Warn("Valuation calculation error", zap.String("ticker", cleanTicker), zap.Int("year", stmt.Year), zap.Error(err))
 		}
 	}
 
 	// Apply Stock Split Adjustment across historical sequence to normalize per-share metrics on latest share basis
-	xbrl.ApplyStockSplitAdjustment(statements)
+	calc.ApplyStockSplitAdjustment(statements)
 
 	for _, stmt := range statements {
 		if len(candles) > 0 {
-			bands := xbrl.ComputeValuationBands(candles, stmt.Valuation.NormalizedEPS, stmt.Valuation.NormalizedBVPS)
-			timing := xbrl.ComputeTimingSignals(candles, bands, stmt.Valuation.NormalizedEPS, stmt.Valuation.NormalizedBVPS)
+			bands := calc.ComputeValuationBands(candles, stmt.Valuation.NormalizedEPS, stmt.Valuation.NormalizedBVPS)
+			timing := calc.ComputeTimingSignals(candles, bands, stmt.Valuation.NormalizedEPS, stmt.Valuation.NormalizedBVPS)
 			stmt.ValuationBands = &bands
 			stmt.TimingSignal = &timing
 			stmt.Valuation.ValuationBands = &bands
@@ -546,7 +547,7 @@ func parseAndIngestTickerFiles(ctx context.Context, ticker string, cfg *config.C
 			}
 
 			seenPaths[fullPath] = true
-			_ = xbrl.ComputeValuationAndRatios(stmt, nil, 0)
+			_ = calc.ComputeValuationAndRatios(stmt, nil, 0)
 
 			if err := repo.Upsert(ctx, stmt); err != nil {
 				logger.Error("Failed to upsert parsed statement", zap.String("ticker", cleanTicker), zap.Error(err))

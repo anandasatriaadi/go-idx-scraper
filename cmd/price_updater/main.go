@@ -14,6 +14,7 @@ import (
 	"github.com/anandasatriaadi/go-idx-scraper/internal/config"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/stock"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/xbrl"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/xbrl/calc"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/helper"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/db/mongo"
 	"github.com/anandasatriaadi/go-idx-scraper/internal/infra/yahoo"
@@ -168,12 +169,12 @@ func main() {
 				priorStmt = stmts[1]
 			}
 
-			if err := xbrl.ComputeValuationAndRatios(latestStmt, priorStmt, latestPrice); err != nil {
+			if err := calc.ComputeValuationAndRatios(latestStmt, priorStmt, latestPrice); err != nil {
 				logger.Warn("Failed to recompute valuation with latest price", zap.String("ticker", cleanTicker), zap.Error(err))
 			} else {
 				if len(fullCandles) > 0 {
-					bands := xbrl.ComputeValuationBands(fullCandles, latestStmt.Valuation.NormalizedEPS, latestStmt.Valuation.NormalizedBVPS)
-					timing := xbrl.ComputeTimingSignals(fullCandles, bands, latestStmt.Valuation.NormalizedEPS, latestStmt.Valuation.NormalizedBVPS)
+					bands := calc.ComputeValuationBands(fullCandles, latestStmt.Valuation.NormalizedEPS, latestStmt.Valuation.NormalizedBVPS)
+					timing := calc.ComputeTimingSignals(fullCandles, bands, latestStmt.Valuation.NormalizedEPS, latestStmt.Valuation.NormalizedBVPS)
 					latestStmt.ValuationBands = &bands
 					latestStmt.TimingSignal = &timing
 					latestStmt.Valuation.ValuationBands = &bands

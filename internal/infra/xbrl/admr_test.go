@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	domain "github.com/anandasatriaadi/go-idx-scraper/internal/feature/xbrl"
+	"github.com/anandasatriaadi/go-idx-scraper/internal/feature/xbrl/calc"
 )
 
 func TestParseADMR_Diagnostic(t *testing.T) {
@@ -20,7 +20,7 @@ func TestParseADMR_Diagnostic(t *testing.T) {
 				t.Fatalf("Parse error: %v", err)
 			}
 
-			_ = domain.ComputeValuationAndRatios(stmt, nil, 1500)
+			_ = calc.ComputeValuationAndRatios(stmt, nil, 1500)
 
 			t.Logf("=== %s %s Audit ===", ticker, yr)
 			t.Logf("  Currency: %s | FX: %f | Multiplier: %f", stmt.Metadata.Currency, stmt.Metadata.ConversionRate, stmt.Metadata.RoundingMultiplier)
