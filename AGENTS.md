@@ -66,13 +66,15 @@ go-idx-scraper/
 │   │   ├── news/                      # News article & briefing domain models, ports, & summary use case
 │   │   ├── stock/                     # Stock ticker & price candles domain models and repository port
 │   │   ├── system/                    # System maintenance domain model (LastRun) & repository port
-│   │   └── xbrl/                      # Statement entity, FactMap, Forensic Valuation & Timing Calculators, port
+│   │   └── xbrl/                      # Statement entity, FactMap, repository port
+│   │       └── calc/                  # Single-responsibility valuation & timing formulas (Graham, Piotroski, Altman Z, ROIC, Margins, Solvency, Split, Timing)
 │   ├── helper/                        # Logging (zap), Excel parsing, file utils, email
 │   └── infra/                         # External Driven Adapters (Driven Ports Implementation)
 │       ├── db/mongo/                  # MongoDB v2 driver repositories (price, xbrl, news, system, etc.)
 │       ├── idx/                       # IDX disclosure portal HTTP & web adapters
 │       ├── scraper/kontan/            # Kontan financial news scraper
-│       ├── xbrl/                      # Streaming XML/XBRL parser (`xml.NewDecoder`)
+│       ├── xbrl/                      # Streaming XML/XBRL parser adapter & Excel parser
+│       │   └── parser/                # Single-responsibility statement parsers (Income, Balance, Cash Flow, DEI, Shares, Dates, Zip)
 │       └── yahoo/                     # Yahoo Finance API client (`{TICKER}.JK`)
 ├── tools/                             # Developer CLI Tools
 │   ├── reset_db/                      # Database wipe and re-index utility
@@ -164,7 +166,7 @@ go-idx-scraper/
    - Use pointer types (e.g. `*string`, `*float64`) for optional fields.
 
 8. **One Concern per File**
-   Keep functions focused and cohesive. Separate calculation logic (`calculator.go`) from domain entities (`entity.go`).
+   Keep functions focused and cohesive. Separate calculation logic into single-responsibility files under `internal/feature/xbrl/calc/` (`graham.go`, `piotroski.go`, `altman_z.go`, `roic.go`, `profitability.go`, `solvency.go`, `split.go`, `timing.go`) from domain entities (`entity.go`).
 
 ### What to Avoid
 
@@ -327,7 +329,7 @@ The single-ticker 5-year seeding tool (`make seed-ticker TICKER=BBRI YEARS=5`) o
 
 ### Low-Memory Streaming Architecture
 
-IDX financial statement instance files can exceed several megabytes. The parser in `internal/infra/xbrl/parser.go` uses `xml.NewDecoder` to stream XML tokens sequentially with $O(1)$ memory overhead:
+IDX financial statement instance files can exceed several megabytes. The parser in `internal/infra/xbrl/parser/` uses `xml.NewDecoder` to stream XML tokens sequentially with $O(1)$ memory overhead across modular statement parsers (`income_statement.go`, `balance_sheet.go`, `cash_flow.go`, `dei.go`, `shares.go`, `dates.go`, `zip.go`):
 
 ```go
 decoder := xml.NewDecoder(reader)
@@ -373,7 +375,7 @@ Standard IDX `contextRef` patterns:
 
 ## 7. Forensic Valuation & Quantitative Formulas
 
-All quantitative financial ratios and forensic scores are implemented in `internal/feature/xbrl/calculator.go`.
+All quantitative financial ratios and forensic scores are implemented as single-responsibility modules in `internal/feature/xbrl/calc/` (`graham.go`, `piotroski.go`, `altman_z.go`, `roic.go`, `profitability.go`, `solvency.go`, `currency.go`, `split.go`, `valuation_bands.go`, `timing.go`).
 
 ### 1. Piotroski F-Score (0 to 9 Integer Score)
 

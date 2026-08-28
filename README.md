@@ -59,13 +59,15 @@ go-idx-scraper/
 │   │   ├── news/                      # News article & briefing domain models, ports, & summary use case
 │   │   ├── stock/                     # Stock ticker & price candles domain models and repository port
 │   │   ├── system/                    # System maintenance domain model (LastRun) & repository port
-│   │   └── xbrl/                      # Statement entity, FactMap, Forensic Valuation & Timing Calculators, port
+│   │   └── xbrl/                      # Statement entity, FactMap, repository port
+│   │       └── calc/                  # Single-responsibility valuation & timing formulas (Graham, Piotroski, Altman Z, ROIC, Margins, Solvency, Split, Timing)
 │   ├── helper/                        # Logging (zap), Excel parsing, file utils, email
 │   └── infra/                         # External Driven Adapters (Driven Ports Implementation)
 │       ├── db/mongo/                  # MongoDB v2 driver repositories (price, xbrl, news, system, etc.)
 │       ├── idx/                       # IDX disclosure portal HTTP & web adapters
 │       ├── scraper/kontan/            # Kontan financial news scraper
-│       ├── xbrl/                      # Streaming XML/XBRL parser (`xml.NewDecoder`)
+│       ├── xbrl/                      # Streaming XML/XBRL parser adapter & Excel parser
+│       │   └── parser/                # Single-responsibility statement parsers (Income, Balance, Cash Flow, DEI, Shares, Dates, Zip)
 │       └── yahoo/                     # Yahoo Finance API client (`{TICKER}.JK`)
 ├── tools/                             # Developer CLI Tools
 │   ├── reset_db/                      # Database wipe and re-index utility
